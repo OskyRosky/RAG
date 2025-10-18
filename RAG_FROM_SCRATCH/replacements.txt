@@ -1,0 +1,2 @@
+# Formato: texto_a_buscar==>texto_de_reemplazo
+REDACTED...tu_api_key_comprometida...==>REDACTED
