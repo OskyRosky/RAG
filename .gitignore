@@ -18,3 +18,9 @@
 *.env
 .env.*
 *.ipynb_checkpoints/
+
+# Nunca versionar estos
+Test RAG 2024/RAG/TestTutorial/
+RAG_FROM_SCRATCH/.venv/
+Test RAG 2024/RAG/Tutorial/chroma_persistent_storage/
+*.sqlite3
