@@ -9,7 +9,7 @@ Evaluación (Etapa 6)
 ───────────────────────────────────────────────────────────────────────────────
 Uso:
   python -m rag.eval --db chroma_db --collection trips_rag \
-    --model llama3.3 --temp 0.0 --k 12 --rerank-top 8 --fuzzy 0.78
+    --model llama3.3 --temp 0.0 --k 12 --rerank-top 8 --fuzzy 0.78 
 """
 
 # ──────────────────────────────────────────────────────────────────────────────
