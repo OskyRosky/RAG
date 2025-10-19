@@ -16,6 +16,13 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
+import os
+import sys
+import time
 import argparse
 import unicodedata
 import re
@@ -23,6 +30,9 @@ import inspect
 from difflib import SequenceMatcher
 from typing import List, Tuple
 
+from rag.qa import answer as qa_answer
+
+from difflib import SequenceMatcher
 from rag.qa import answer as qa_answer
 
 # ──────────────────────────────────────────────────────────────────────────────

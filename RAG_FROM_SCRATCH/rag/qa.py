@@ -1,53 +1,56 @@
 # rag/qa.py
 """
-Etapa 5: QA (Retrieve → Read) robusto y controlable por parámetros.
-
-Diseño:
-- Usa SOLAMENTE el CONTEXTO para responder (estilo “closed-book over retrieved context”).
-- Tercera persona impersonal (“se …”).
-- Recuperación en dos pasos: prefetch amplio → filtrado por umbral → (opcional) re-ranking cruzado.
-- Sin dependencias frágiles: embeddings con langchain_community (evita langchain-huggingface).
-
-CLI (ejemplos):
-  python -m rag.qa --db chroma_db --collection trips_rag \
-    --model llama3.3 --temp 0.0 \
-    --k 12 --threshold 0.30 --prefetch 48 --use-rerank \
-    --question "¿Dónde se cenó el 6 de agosto de 2024 en Bangkok, Tailandia?" \
+───────────────────────────────────────────────────────────────────────────────
+Etapa 5: QA (Retrieve → Read) robusto y simple
+- Respuestas SIEMPRE en tercera persona impersonal.
+- Usa SOLO el contexto recuperado (guardrails en el prompt).
+- Presets de optimización para no pelear con parámetros:
+    --mode fast      → rápido (k bajo / prefetch moderado / umbral estándar)
+    --mode accurate  → mayor recall (k/prejfetch más altos / umbral más laxo)
+- Permite overrides puntuales: --k, --prefetch, --threshold
+- Sin re-ranker pesado: menor latencia y menos dependencias.
+───────────────────────────────────────────────────────────────────────────────
+Uso:
+  python -m rag.qa --db chroma_db --collection trips_rag --model llama3.3 \
+    --temp 0.0 --mode accurate --k 12 \
+    --question "¿Dónde se almorzó el 16 de mayo de 2024 en Brasil?" \
     --show-sources
 """
 
-# ── Ruido fuera ─────────────────────────────────────────────────────────────────
+import os
+import argparse
 import warnings
+from pathlib import Path
+from typing import List, Tuple
+
+# Silenciar avisos/verborrea de dependencias
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
-
-import os
-import re
-import argparse
-from pathlib import Path
-from typing import List, Tuple, Iterable
-
-# 🔇 Silenciar avisos
 os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
 os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
+# LangChain / Chroma / Embeddings
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.documents import Document
 from langchain_chroma import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
 
+# Tu wrapper para LLM (Ollama u otro)
 from rag.llm import get_llm
 
-# ⬇️ Cross-encoder opcional (solo si lo activas con --rerank-top)
-try:
-    from rag.reranker import rerank as ce_rerank
-    _HAS_CE = True
-except Exception:
-    _HAS_CE = False
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Config: modelo de embeddings
+#   Elegido: paraphrase-multilingual-mpnet-base-v2
+#   Razón: multilingüe, robusto, estable con versiones actuales de LangChain.
+# ──────────────────────────────────────────────────────────────────────────────
 EMBED_MODEL = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Prompts (instrucciones del sistema y plantilla de usuario)
+# ──────────────────────────────────────────────────────────────────────────────
 SYSTEM_PROMPT = """Eres un asistente de QA que SOLO usa el CONTEXTO.
 
 REGLAS ESTRICTAS:
@@ -66,59 +69,19 @@ Contexto (fragmentos recuperados):
 {context}
 """
 
-# ---------------------------
-# Utilidades de preguntas
-# ---------------------------
 
-_COUNTRY_LIST = [
-    "Japón","Francia","Australia","Sudáfrica","Brasil","Italia",
-    "Estados Unidos","Tailandia","Canadá","Marruecos","Costa Rica"
-]
-
-def _strip_country(q: str) -> str:
-    for c in _COUNTRY_LIST:
-        q = re.sub(rf"\b{re.escape(c)}\b", "", q, flags=re.IGNORECASE)
-    return " ".join(q.split())
-
-def _strip_date(q: str) -> str:
-    # elimina patrones tipo "el 10 de julio de 2024"
-    q = re.sub(r"\b(el|del)?\s*\d{1,2}\s+de\s+\w+\s+de\s+\d{4}\b", " ", q, flags=re.IGNORECASE)
-    # elimina solo "el 10 de julio"
-    q = re.sub(r"\b(el|del)?\s*\d{1,2}\s+de\s+\w+\b", " ", q, flags=re.IGNORECASE)
-    return " ".join(q.split())
-
-def expand_queries(question: str) -> List[str]:
-    """
-    Multi-query ligero, sin LLM:
-      - original
-      - sin país
-      - sin fechas explícitas
-    Deja la semántica y aporta recall cuando hay ruido en la redacción.
-    """
-    variants = []
-    base = question.strip()
-    if base:
-        variants.append(base)
-        variants.append(_strip_country(base))
-        variants.append(_strip_date(base))
-    # de-duplicar preservando orden
-    seen = set()
-    uniq = []
-    for v in variants:
-        if v and v not in seen:
-            uniq.append(v)
-            seen.add(v)
-    return uniq[:3]
-
-# ---------------------------
-# Vector store
-# ---------------------------
-
+# ──────────────────────────────────────────────────────────────────────────────
+# Carga de vectorstore (Chroma) con embeddings HF
+# ──────────────────────────────────────────────────────────────────────────────
 def load_vectorstore(db_dir: Path, collection: str) -> Chroma:
+    """
+    Conecta a la colección Chroma persistida en disco con el mismo modelo de
+    embeddings que se usó al indexar (coherencia = mejor recall/precision).
+    """
     emb = HuggingFaceEmbeddings(
         model_name=EMBED_MODEL,
-        model_kwargs={"device": "cpu"},
-        encode_kwargs={"normalize_embeddings": True},
+        model_kwargs={"device": "cpu"},            # CPU para máxima compatibilidad
+        encode_kwargs={"normalize_embeddings": True},  # normaliza vectores
     )
     return Chroma(
         persist_directory=str(db_dir),
@@ -126,95 +89,80 @@ def load_vectorstore(db_dir: Path, collection: str) -> Chroma:
         embedding_function=emb,
     )
 
-# ---------------------------
-# Retrieve con MMR y presets
-# ---------------------------
 
-def retrieve_union_mmr(
-    vs: Chroma,
-    queries: Iterable[str],
-    k_final: int,
-    fetch_k: int,
-    lambda_mult: float = 0.5,
-) -> List[Document]:
+# ──────────────────────────────────────────────────────────────────────────────
+# Retrieve: traemos candidatos con prefetch y filtramos por umbral
+# ──────────────────────────────────────────────────────────────────────────────
+def _similarity_with_scores(vs: Chroma, query: str, k: int) -> List[Tuple[Document, float]]:
     """
-    - Hace max_marginal_relevance_search por cada variante de la pregunta.
-    - Une resultados (sin duplicar) conservando orden por aparición.
-    - Corta a k_final.
+    Intenta devolver (doc, score) como relevancia normalizada [0..1].
+    Si el backend solo expone distancia, la convierte a relevancia aprox.
     """
-    bag: List[Document] = []
-    seen_ids = set()
-    for q in queries:
-        try:
-            docs = vs.max_marginal_relevance_search(
-                q, k=min(k_final, fetch_k), fetch_k=fetch_k, lambda_mult=lambda_mult
-            )
-        except Exception:
-            # fallback a similarity_search si MMR no está disponible
-            docs = vs.similarity_search(q, k=min(k_final, fetch_k))
-        for d in docs:
-            doc_id = (d.metadata.get("source"), d.metadata.get("chunk_id"))
-            if doc_id not in seen_ids:
-                bag.append(d)
-                seen_ids.add(doc_id)
-            if len(bag) >= k_final:
-                return bag
-    return bag[:k_final]
+    try:
+        return vs.similarity_search_with_relevance_scores(query, k=k)
+    except Exception:
+        docs_scores = vs.similarity_search_with_score(query, k=k)
+        converted = []
+        for doc, dist in docs_scores:
+            try:
+                rel = 1.0 / (1.0 + float(dist))  # mapeo distancia→“relevancia” aprox
+            except Exception:
+                rel = 0.0
+            converted.append((doc, rel))
+        return converted
+
+
+def retrieve(vs: Chroma, query: str, k_final: int, threshold: float, prefetch: int) -> List[Document]:
+    """
+    1) Recupera top 'prefetch' (más ancho que k_final) para subir recall.
+    2) Filtra por umbral de relevancia (threshold); si queda vacío, relaja.
+    3) Corta a k_final y devuelve.
+    """
+    prefetch = max(prefetch, k_final)
+    docs_scores = _similarity_with_scores(vs, query, k=prefetch)
+
+    # Filtro por score; si se vacía, usamos sin filtrar (para no dejar en blanco)
+    filtered = [(d, s) for (d, s) in docs_scores if s >= threshold]
+    if not filtered:
+        filtered = docs_scores
+
+    docs = [d for (d, _) in filtered][:k_final]
+    return docs
+
 
 def format_context(docs: List[Document]) -> str:
+    """Concatena fragmentos para el LLM con numeración simple."""
     if not docs:
         return "No hay fragmentos recuperados."
     return "\n\n".join(f"[{i}] {d.page_content}" for i, d in enumerate(docs, 1))
 
-# ---------------------------
-# Presets
-# ---------------------------
 
-def get_preset(mode: str):
-    """
-    fast:    k=8,  fetch_k=24, MMR on (barato), cross-encoder OFF
-    accurate:k=12, fetch_k=48, MMR on (barato), cross-encoder opcional
-    """
-    mode = (mode or "fast").lower()
-    if mode == "accurate":
-        return dict(k=12, fetch_k=48, lambda_mult=0.5, use_ce=False)
-    # default fast
-    return dict(k=8, fetch_k=24, lambda_mult=0.5, use_ce=False)
-
-# ---------------------------
-# QA principal
-# ---------------------------
-
+# ──────────────────────────────────────────────────────────────────────────────
+# Respuesta principal: arma prompt, invoca LLM y devuelve texto + fuentes
+# ──────────────────────────────────────────────────────────────────────────────
 def answer(
     question: str,
     db: str,
     collection: str,
     model: str,
     temp: float,
-    k: int = None,
-    mode: str = "fast",
-    rerank_top: int = 0,   # cross-encoder (opcional)
+    k: int,
+    prefetch: int,
+    threshold: float,
 ) -> Tuple[str, List[Tuple[str, str]]]:
+    """
+    Firma explícita (sin re-ranker): enfocada a velocidad y estabilidad.
 
+    Devuelve:
+        - respuesta (str) ya formateada según reglas del SYSTEM_PROMPT
+        - lista de fuentes [(source, chunk_id), ...] para auditoría
+    """
     vs = load_vectorstore(Path(db), collection)
 
-    # 1) Preset
-    preset = get_preset(mode)
-    k_final = k or preset["k"]
-    fetch_k = preset["fetch_k"]
-    lambda_mult = preset["lambda_mult"]
+    # Retrieve “ancho” con filtro suave
+    docs = retrieve(vs, question, k_final=k, threshold=threshold, prefetch=prefetch)
 
-    # 2) Expandir consultas ligeras
-    qlist = expand_queries(question)
-
-    # 3) Retrieve + MMR (barato)
-    docs = retrieve_union_mmr(vs, qlist, k_final=k_final, fetch_k=fetch_k, lambda_mult=lambda_mult)
-
-    # 4) (Opcional) rerank cruzado si lo pides y está disponible
-    if rerank_top and _HAS_CE and len(docs) > 1:
-        docs = ce_rerank(question, docs, top_n=max(k_final, rerank_top))[:k_final]
-
-    # 5) Prompt + LLM
+    # Prompt + LLM
     context = format_context(docs)
     prompt = ChatPromptTemplate.from_messages([
         ("system", SYSTEM_PROMPT),
@@ -224,21 +172,43 @@ def answer(
     llm = get_llm(model=model, temperature=temp)
     resp = llm.invoke(prompt)
 
-    srcs = [(d.metadata.get("source","?"), d.metadata.get("chunk_id","?")) for d in docs]
+    # Fuentes mínimas (archivo + id de chunk)
+    srcs = [(d.metadata.get("source", "?"), d.metadata.get("chunk_id", "?")) for d in docs]
     return resp.content.strip(), srcs
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CLI
+# ──────────────────────────────────────────────────────────────────────────────
 def main():
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(description="QA (Retrieve→Read) con presets simples.")
     ap.add_argument("--db", default="chroma_db")
     ap.add_argument("--collection", default="trips_rag")
     ap.add_argument("--model", default="llama3.3")
     ap.add_argument("--temp", type=float, default=0.0)
-    ap.add_argument("--k", type=int, default=None, help="Override de k (si no, usa preset)")
-    ap.add_argument("--mode", choices=["fast","accurate"], default="fast")
-    ap.add_argument("--rerank-top", type=int, default=0, help="N de docs a conservar tras cross-encoder (0=off)")
+
+    # Presets de latencia/recall
+    ap.add_argument("--mode", choices=["fast", "accurate"], default="accurate",
+                    help="Preset: fast (rápido) | accurate (mayor recall)")
+
+    # Overrides opcionales (si no los pasas, se aplican los del preset)
+    ap.add_argument("--k", type=int, default=None, help="Docs finales a pasar al LLM")
+    ap.add_argument("--prefetch", type=int, default=None, help="Docs a recuperar antes de filtrar")
+    ap.add_argument("--threshold", type=float, default=None, help="Umbral de relevancia [0..1]")
+
     ap.add_argument("--question", required=True)
     ap.add_argument("--show-sources", action="store_true", help="Imprime fuentes recuperadas")
     args = ap.parse_args()
+
+    # Presets (puedes sobreescribir con flags)
+    if args.mode == "fast":
+        k = 8 if args.k is None else args.k
+        prefetch = 16 if args.prefetch is None else args.prefetch
+        threshold = 0.30 if args.threshold is None else args.threshold
+    else:  # accurate
+        k = 12 if args.k is None else args.k
+        prefetch = 36 if args.prefetch is None else args.prefetch
+        threshold = 0.25 if args.threshold is None else args.threshold
 
     ans, srcs = answer(
         question=args.question,
@@ -246,9 +216,9 @@ def main():
         collection=args.collection,
         model=args.model,
         temp=args.temp,
-        k=args.k,
-        mode=args.mode,
-        rerank_top=args.rerank_top,
+        k=k,
+        prefetch=prefetch,
+        threshold=threshold,
     )
 
     print(ans)
