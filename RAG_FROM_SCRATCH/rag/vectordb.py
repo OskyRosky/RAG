@@ -30,6 +30,10 @@
 
 ───────────────────────────────────────────────────────────────────────────────
 """
+# Silencia warnings y deprecaciones visuales
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 # ── Librerías base ─────────────────────────────────────────────────────────────
 import json
@@ -37,10 +41,6 @@ import argparse
 import warnings
 from pathlib import Path
 from typing import List, Dict, Any
-
-# Silencia warnings y deprecaciones visuales
-warnings.filterwarnings("ignore", category=UserWarning)
-warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 # ── LangChain / Chroma / Embeddings ────────────────────────────────────────────
 from langchain_community.embeddings import HuggingFaceEmbeddings
