@@ -29,8 +29,8 @@ from langchain_core.documents import Document
 
 
 def build_embeddings():
-    # Embedding multilingüe, ligero y muy competente en español
-    return FastEmbedEmbeddings(model_name="intfloat/multilingual-e5-small")
+    # Multilingüe y soportado por fastembed
+    return FastEmbedEmbeddings(model_name="BAAI/bge-m3")
 
 
 def load_jsonl(p: Path):

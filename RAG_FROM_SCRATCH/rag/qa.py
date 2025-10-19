@@ -41,7 +41,7 @@ Contexto (fragmentos recuperados):
 """
 
 def load_vectorstore(db_dir: Path, collection: str) -> Chroma:
-    emb = FastEmbedEmbeddings(model_name="intfloat/multilingual-e5-small")
+    emb = FastEmbedEmbeddings(model_name="BAAI/bge-m3")
     return Chroma(
         persist_directory=str(db_dir),
         collection_name=collection,
