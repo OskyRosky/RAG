@@ -12,17 +12,21 @@ Uso:
     --model llama3.3 --temp 0.0 --k 12 --rerank-top 8 --fuzzy 0.78
 """
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Silenciar warnings/ruido de librerías para una salida limpia en consola
+# ──────────────────────────────────────────────────────────────────────────────
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
+import os
 os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
 os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
-import os
-import sys
-import time
+# ──────────────────────────────────────────────────────────────────────────────
+# Imports estándar
+# ──────────────────────────────────────────────────────────────────────────────
 import argparse
 import unicodedata
 import re
@@ -30,13 +34,15 @@ import inspect
 from difflib import SequenceMatcher
 from typing import List, Tuple
 
+# Import del pipeline de QA
 from rag.qa import answer as qa_answer
 
-from difflib import SequenceMatcher
-from rag.qa import answer as qa_answer
 
 # ──────────────────────────────────────────────────────────────────────────────
-# TESTS
+# TESTS (11 casos)
+#   Formato: (pregunta, respuesta_esperada)
+#   Nota: el último test es negativo: debe responder con la frase exacta
+#   "Lo siento, no encuentro esa información en los documentos."
 # ──────────────────────────────────────────────────────────────────────────────
 TESTS: List[Tuple[str, str]] = [
     ("Para el viaje a Tokio, Japón, del 15 al 25 de enero del 2024, el día 18 de enero. ¿Qué animal representa la estatua en Shibuya?", "Hachiko"),
@@ -53,7 +59,9 @@ TESTS: List[Tuple[str, str]] = [
 ]
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Normalización y fuzzy
+# Normalización y fuzzy matching
+#   - Se eliminan tildes, signos y se homogeniza a minúsculas.
+#   - Coincidencia aproximada con SequenceMatcher para evitar falsos negativos.
 # ──────────────────────────────────────────────────────────────────────────────
 _PUNCT_RE = re.compile(r"[^\w\s]", flags=re.UNICODE)
 
@@ -69,6 +77,7 @@ def normalize_text(s: str) -> str:
     return s
 
 def is_negative_expected(exp: str) -> bool:
+    # Si el esperado comienza con "Lo siento", tratamos el test como negativo
     return normalize_text(exp).startswith("lo siento")
 
 def approx_match(answer: str, expected: str, fuzzy_threshold: float) -> bool:
@@ -76,24 +85,24 @@ def approx_match(answer: str, expected: str, fuzzy_threshold: float) -> bool:
     e = normalize_text(expected)
     if not a or not e:
         return False
+    # Contiene literal (tras normalizar)
     if e in a:
         return True
+    # O similitud >= umbral
     return SequenceMatcher(None, a, e).ratio() >= fuzzy_threshold
 
+
 # ──────────────────────────────────────────────────────────────────────────────
-# Llamada retrocompatible a qa.answer
+# Llamada retrocompatible a rag.qa.answer
+#   - Detecta la firma con inspect.signature y pasa solo los args soportados.
+#   - Evita romper si cambiaste la firma en tu rama.
 # ──────────────────────────────────────────────────────────────────────────────
 def call_qa(question: str, db: str, collection: str, model: str, temp: float,
             k: int, rerank_top: int):
-    """
-    Detecta qué parámetros acepta rag.qa.answer mediante inspect.signature
-    y pasa únicamente los soportados. Así evitamos errores si la firma
-    cambia entre ramas/versiones.
-    """
     sig = inspect.signature(qa_answer)
     params = sig.parameters
 
-    # Argumentos básicos siempre que existan en la firma:
+    # Argumentos básicos (si están en la firma actual):
     kwargs = {}
     for key, val in [
         ("question", question),
@@ -106,11 +115,15 @@ def call_qa(question: str, db: str, collection: str, model: str, temp: float,
         if key in params:
             kwargs[key] = val
 
-    # Opcionales según la versión del qa.py:
+    # Argumentos opcionales según versión:
+    # - Si tu qa.py soporta re-ranking (CrossEncoder), lo activamos si rerank_top > 0.
     if "rerank_top" in params:
         kwargs["rerank_top"] = rerank_top
     if "use_rerank" in params:
         kwargs["use_rerank"] = rerank_top > 0
+
+    # - Si tu qa.py soporta umbral y prefetch manual, enviamos valores “seguros”.
+    #   (No todos los qa.py los tienen; por eso el chequeo condicional.)
     if "threshold" in params:
         kwargs["threshold"] = 0.30
     if "prefetch" in params:
@@ -118,8 +131,11 @@ def call_qa(question: str, db: str, collection: str, model: str, temp: float,
 
     return qa_answer(**kwargs)
 
+
 # ──────────────────────────────────────────────────────────────────────────────
-# Runner
+# Runner principal
+#   - Imprime cada resultado en orden (uno a uno).
+#   - Calcula la tabla de confusión y exactitud al final.
 # ──────────────────────────────────────────────────────────────────────────────
 def run_eval(db: str, collection: str, model: str, temp: float, k: int,
              rerank_top: int, fuzzy_threshold: float):
@@ -127,6 +143,7 @@ def run_eval(db: str, collection: str, model: str, temp: float, k: int,
     rows = []
 
     for idx, (q, expected) in enumerate(TESTS, 1):
+        # Llamamos al pipeline de QA (retrocompatible con tu qa.py actual)
         ans, _ = call_qa(
             question=q,
             db=db,
@@ -137,6 +154,7 @@ def run_eval(db: str, collection: str, model: str, temp: float, k: int,
             rerank_top=rerank_top,
         )
 
+        # Evaluación: negativo vs positivo
         neg = is_negative_expected(expected)
         if neg:
             ok = "lo siento" in normalize_text(ans)
@@ -150,26 +168,41 @@ def run_eval(db: str, collection: str, model: str, temp: float, k: int,
         mark = "✅" if ok else "❌"
         rows.append(f"{mark} {idx:02d}. {ans}")
 
+    # Imprimir uno a uno (en orden)
     for r in rows:
         print(r)
 
+    # Métricas finales
     total = tp + fp + tn + fn
     acc = 100.0 * (tp + tn) / max(1, total)
     print("\n--- Tabla de Confusión ---")
     print(f"TP={tp}  FP={fp}  TN={tn}  FN={fn}")
     print(f"Exactitud total: {acc:.2f}%")
 
+
 # ──────────────────────────────────────────────────────────────────────────────
 def main():
-    ap = argparse.ArgumentParser(description="Evaluación de 11 tests sobre el pipeline QA.")
-    ap.add_argument("--db", default="chroma_db")
-    ap.add_argument("--collection", default="trips_rag")
-    ap.add_argument("--model", default="llama3.3")
-    ap.add_argument("--temp", type=float, default=0.0)
-    ap.add_argument("--k", type=int, default=12)
-    ap.add_argument("--rerank-top", type=int, default=8, help="Docs a conservar tras re-rank (0 = desactivado)")
-    ap.add_argument("--fuzzy", type=float, default=0.78, help="Umbral de similitud difusa [0..1]")
-    args = ap.parse_args()
+    parser = argparse.ArgumentParser(
+        description="Evaluación de 11 tests sobre el pipeline QA."
+    )
+    parser.add_argument("--db", default="chroma_db")
+    parser.add_argument("--collection", default="trips_rag")
+    parser.add_argument("--model", default="llama3.3")
+    parser.add_argument("--temp", type=float, default=0.0)
+    parser.add_argument("--k", type=int, default=12)
+    parser.add_argument(
+        "--rerank-top",
+        type=int,
+        default=8,
+        help="Docs a conservar tras re-rank (0 = desactivado)"
+    )
+    parser.add_argument(
+        "--fuzzy",
+        type=float,
+        default=0.78,
+        help="Umbral de similitud difusa [0..1]"
+    )
+    args = parser.parse_args()
 
     run_eval(
         db=args.db,
@@ -180,6 +213,7 @@ def main():
         rerank_top=args.rerank_top,
         fuzzy_threshold=args.fuzzy,
     )
+
 
 if __name__ == "__main__":
     main()
