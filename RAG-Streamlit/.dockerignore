@@ -1,9 +1,12 @@
-.venv
-__pycache__
+.venv/
+__pycache__/
 *.pyc
 *.pyo
 *.DS_Store
-chroma_db/*
-notebooks/*
-.git
+.git/
 .gitignore
+
+chroma_db/
+data/*.pdf
+data/*.docx
+notebooks/
