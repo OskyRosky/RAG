@@ -18,9 +18,14 @@ warnings.filterwarnings("ignore")
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.documents import Document
-from langchain_community.embeddings import FastEmbedEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from rag.llm import get_llm
+
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+
 
 SYSTEM_PROMPT = """Eres un asistente de QA que SOLO usa el CONTEXTO.
 
@@ -40,16 +45,21 @@ Contexto (fragmentos recuperados):
 {context}
 """
 
+# ---------- VectorStore ----------
 def load_vectorstore(db_dir: Path, collection: str) -> Chroma:
-    emb = FastEmbedEmbeddings(model_name="BAAI/bge-m3")
+    emb = HuggingFaceEmbeddings(
+        model_name="BAAI/bge-m3",
+        model_kwargs={"device": "cpu"},
+        encode_kwargs={"normalize_embeddings": True},
+    )
     return Chroma(
         persist_directory=str(db_dir),
         collection_name=collection,
         embedding_function=emb,
     )
 
-def _similarity_with_scores(vs: Chroma, query: str, k: int) -> List[Tuple[Document, float]]:
-    """Devuelve lista de (doc, score). Intenta relevancia 0..1 y si no, convierte desde distancia."""
+def _similarity_with_scores(vs: Chroma, query: str, k: int):
+    """Devuelve lista de (doc, score) en relevancia 0..1 si es posible."""
     try:
         return vs.similarity_search_with_relevance_scores(query, k=k)
     except Exception:
@@ -67,7 +77,7 @@ def retrieve(vs: Chroma, query: str, k: int = 10, threshold: float = 0.30) -> Li
     docs_scores = _similarity_with_scores(vs, query, k=k)
     filtered = [(d, s) for (d, s) in docs_scores if s >= threshold]
     if not filtered:
-        filtered = docs_scores
+        filtered = docs_scores  # fallback
     return [d for (d, _) in filtered]
 
 def format_context(docs: List[Document]) -> str:
@@ -75,6 +85,7 @@ def format_context(docs: List[Document]) -> str:
         return "No hay fragmentos recuperados."
     return "\n\n".join(f"[{i}] {d.page_content}" for i, d in enumerate(docs, 1))
 
+# ---------- QA ----------
 def answer(question: str, db: str, collection: str, model: str, temp: float, k: int) -> Tuple[str, List[Tuple[str, str]]]:
     vs = load_vectorstore(Path(db), collection)
     docs = retrieve(vs, question, k=k, threshold=0.30)
@@ -88,16 +99,17 @@ def answer(question: str, db: str, collection: str, model: str, temp: float, k: 
     llm = get_llm(model=model, temperature=temp)
     resp = llm.invoke(prompt)
 
-    srcs = [(d.metadata.get("source","Trips.txt"), d.metadata.get("chunk_id","?")) for d in docs]
+    srcs = [(d.metadata.get("source","?"), d.metadata.get("chunk_id","?")) for d in docs]
     return resp.content.strip(), srcs
 
+# ---------- CLI ----------
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", default="chroma_db")
     ap.add_argument("--collection", default="trips_rag")
     ap.add_argument("--model", default="llama3.3")
     ap.add_argument("--temp", type=float, default=0.0)
-    ap.add_argument("--k", type=int, default=10)
+    ap.add_argument("--k", type=int, default=12)
     ap.add_argument("--question", required=True)
     ap.add_argument("--show-sources", action="store_true", help="Imprime fuentes recuperadas")
     args = ap.parse_args()
