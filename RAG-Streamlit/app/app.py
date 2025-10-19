@@ -1,159 +1,218 @@
 # app/app.py
-"""
-UI mínima para tu RAG (Streamlit)
-- Controles en la barra lateral (DB, colección, k, temperatura, modo).
-- Llama a rag.qa.answer de forma retrocompatible (inspección de firma).
-- Muestra respuesta y (opcional) fuentes recuperadas.
+# ──────────────────────────────────────────────────────────────────────────────
+# Streamlit UI para tu RAG:
+# - Modos fast/accurate/custom
+# - Historial de consultas (memoria de sesión)
+# - Botón “Copiar respuesta” (JS simple) y exportar conversación (JSON)
+# - Retrocompatible con distintas firmas de rag.qa.answer
+# ──────────────────────────────────────────────────────────────────────────────
 
-Ejecuta:
-  streamlit run app/app.py
-"""
+import sys, pathlib, inspect, json, time
+from datetime import datetime
 
-# ⬇️ añade esto arriba del todo, antes del "from rag.qa import ..."
-import sys, pathlib
-ROOT = pathlib.Path(__file__).resolve().parents[1]  # carpeta raíz del repo
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-
-
-import os
-import inspect
-import warnings
 import streamlit as st
 
-# Silencio de librerías verbosas
-warnings.filterwarnings("ignore", category=UserWarning)
-warnings.filterwarnings("ignore", category=DeprecationWarning)
-os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
-os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
-os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-
-# Importa tu pipeline de QA
-# ⬇️ añade esto arriba del todo, antes del "from rag.qa import ..."
-import sys, pathlib
-ROOT = pathlib.Path(__file__).resolve().parents[1]  # carpeta raíz del repo
+# Hacemos import del paquete local "rag"
+ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from rag.qa import answer as qa_answer  # <- usamos la misma función del proyecto
+from rag.qa import answer as qa_answer  # pipeline principal
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ──────────────────────────────────────────────────────────────────────────────
 
-# --------- Helper: llamada retrocompatible a qa.answer ----------
-def call_qa(question: str,
-            db: str, collection: str,
-            model: str, temp: float, k: int,
-            mode: str, rerank_top: int):
+def call_qa(question: str, db: str, collection: str, model: str, temp: float,
+            k: int, use_rerank: bool, rerank_top: int):
     """
-    Adapta la llamada a rag.qa.answer según los argumentos disponibles
-    en tu versión (como hicimos en eval.py).
-    Además aplica presets para 'mode' (fast / accurate / custom).
+    Llama a rag.qa.answer pasando solo los argumentos que existan en la firma.
+    Retrocompatible con versiones previas.
     """
-    # Presets de rendimiento
-    use_rerank = rerank_top > 0
-    if mode == "fast":
-        k = max(8, k)
-        use_rerank = False
-        threshold = 0.30
-        prefetch = max(24, k * 2)
-    elif mode == "accurate":
-        k = max(12, k)
-        use_rerank = True if rerank_top > 0 else False
-        threshold = 0.30
-        prefetch = max(40, k * 4)
-    else:  # custom
-        threshold = 0.30
-        prefetch = max(36, k * 3)
-
-    # Inspección de firma para no romper si cambian los args
     sig = inspect.signature(qa_answer)
     params = sig.parameters
+
     kwargs = {}
+    for key, val in [
+        ("question", question),
+        ("db", db),
+        ("collection", collection),
+        ("model", model),
+        ("temp", temp),
+        ("k", k),
+    ]:
+        if key in params:
+            kwargs[key] = val
 
-    base = {
-        "question": question,
-        "db": db,
-        "collection": collection,
-        "model": model,
-        "temp": temp,
-        "k": k,
-    }
-    for kname, val in base.items():
-        if kname in params:
-            kwargs[kname] = val
+    if "mode" in params:
+        # Si tu qa.py soporta 'mode', respétalo según los toggles (fast/accurate/custom)
+        kwargs["mode"] = st.session_state.get("mode_choice", "fast")
 
-    optional = {
-        "rerank_top": rerank_top,
-        "use_rerank": use_rerank,
-        "threshold": threshold,
-        "prefetch": prefetch,
-    }
-    for kname, val in optional.items():
-        if kname in params:
-            kwargs[kname] = val
+    # re-rank
+    if "rerank_top" in params:
+        kwargs["rerank_top"] = (rerank_top if use_rerank else 0)
+    if "use_rerank" in params:
+        kwargs["use_rerank"] = bool(use_rerank)
 
-    return qa_answer(**kwargs)  # -> (texto, fuentes)
+    # thresholds/prefetch si existen (custom)
+    if kwargs.get("mode") == "custom":
+        if "threshold" in params:
+            kwargs["threshold"] = st.session_state.get("threshold_custom", 0.30)
+        if "prefetch" in params:
+            kwargs["prefetch"] = st.session_state.get("prefetch_custom", max(40, k * 4))
+
+    return qa_answer(**kwargs)
 
 
-# ===================== UI =====================
-st.set_page_config(page_title="RAG Demo", page_icon="🧭", layout="centered")
-st.title("🧭 RAG de Viajes – Demo")
+def copy_to_clipboard_js(text: str):
+    """
+    Devuelve un HTML con JS para copiar 'text' al portapapeles.
+    Streamlit ≥1.32 soporta st.html; si no, se ignora silenciosamente.
+    """
+    escaped = json.dumps(text)  # escapa correctamente
+    return f"""
+    <script>
+    async function copyRagText() {{
+        try {{
+            await navigator.clipboard.writeText({escaped});
+            const el = document.getElementById('copied-toast');
+            if (el) {{ el.style.display = 'block'; setTimeout(()=> el.style.display='none', 1500); }}
+        }} catch(err) {{
+            console.log('copy failed', err);
+        }}
+    }}
+    </script>
+    <div style="display:none" id="copied-toast">Copiado ✅</div>
+    <button onclick="copyRagText()" style="
+        background:#ea4b4b;color:white;border:0;border-radius:8px;padding:8px 12px;cursor:pointer;">
+        Copiar respuesta
+    </button>
+    """
+
+
+def init_state():
+    if "history" not in st.session_state:
+        st.session_state.history = []  # lista de dicts {t, q, a, sources}
+    if "mode_choice" not in st.session_state:
+        st.session_state.mode_choice = "fast"
+    if "threshold_custom" not in st.session_state:
+        st.session_state.threshold_custom = 0.30
+    if "prefetch_custom" not in st.session_state:
+        st.session_state.prefetch_custom = 40
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# UI
+# ──────────────────────────────────────────────────────────────────────────────
+st.set_page_config(page_title="RAG de Viajes — Demo", page_icon="🧭", layout="wide")
+init_state()
 
 with st.sidebar:
     st.header("⚙️ Configuración")
 
-    # Rutas por defecto coherentes con tu repo
     db_dir = st.text_input("Directorio Chroma DB", "chroma_db")
     collection = st.text_input("Colección", "trips_rag")
-
-    # Modelo LLM (Ollama)
     model = st.text_input("Modelo (Ollama)", "llama3.3")
-    temp = st.slider("Temperatura", 0.0, 1.0, 0.0, 0.1)
+    temp = st.slider("Temperatura", 0.0, 1.0, 0.0, 0.01)
 
-    # Recuperación
-    mode = st.radio("Modo", ["fast", "accurate", "custom"], index=0, horizontal=True)
-    k = st.slider("k (contexto)", 4, 20, 12, 1)
+    st.markdown("**Modo**")
+    colm1, colm2, colm3 = st.columns([1,1,1])
+    with colm1:
+        if st.radio(" ", ["fast", "accurate", "custom"], index=["fast","accurate","custom"].index(st.session_state.mode_choice), label_visibility="collapsed", key="mode_choice") == "fast":
+            pass
 
-    # Re-rank opcional (si tu qa.py lo soporta)
-    use_rer = st.checkbox("Usar re-rank (si disponible)", value=False)
-    rerank_top = st.slider("Top re-rank", 0, 12, 8, 1, disabled=not use_rer)
-    if not use_rer:
-        rerank_top = 0
+    # Parámetros por modo
+    if st.session_state.mode_choice == "fast":
+        k = st.slider("k (contexto)", 4, 16, 12, 1)
+        use_rerank = st.checkbox("Usar re-rank (si disponible)", value=False)
+        rerank_top = st.slider("Top re-rank", 2, 12, 6, 1, disabled=not use_rerank)
+
+    elif st.session_state.mode_choice == "accurate":
+        k = st.slider("k (contexto)", 8, 20, 12, 1)
+        use_rerank = st.checkbox("Usar re-rank (si disponible)", value=True)
+        rerank_top = st.slider("Top re-rank", 4, 12, 8, 1, disabled=not use_rerank)
+
+    else:  # custom
+        k = st.slider("k (contexto)", 4, 24, 12, 1)
+        st.session_state.threshold_custom = st.slider("threshold", 0.0, 0.8, st.session_state.threshold_custom, 0.01)
+        st.session_state.prefetch_custom = st.slider("prefetch", 8, 96, st.session_state.prefetch_custom, 1)
+        use_rerank = st.checkbox("Usar re-rank (si disponible)", value=False)
+        rerank_top = st.slider("Top re-rank", 2, 12, 8, 1, disabled=not use_rerank)
 
     show_sources = st.checkbox("Mostrar fuentes", value=True)
+    st.divider()
 
+    # Historial en sidebar (resumen)
+    st.subheader("🕘 Historial (resumen)")
+    if st.session_state.history:
+        for i, h in enumerate(reversed(st.session_state.history[:10]), 1):
+            st.caption(f"{h['t']} • {h['q'][:48]}…")
+    if st.button("🧹 Limpiar historial"):
+        st.session_state.history.clear()
+        st.success("Historial limpiado.")
+
+st.title("🧭 RAG de Viajes – Demo")
 st.write("Escribe una pregunta basada en tus viajes. Ejemplos:")
-st.caption("• ¿Dónde se almorzó el 16 de mayo de 2024 en Brasil?\n"
-           "• ¿Dónde se cenó el 6 de agosto de 2024 en Bangkok, Tailandia?\n"
-           "• ¿Qué se visitó por la tarde el 18 de septiembre de 2024 en Toronto, Canadá?")
+st.markdown("• ¿Dónde se almorzó el 16 de mayo de 2024 en Brasil? • ¿Dónde se cenó el 6 de agosto de 2024 en Bangkok, Tailandia? • ¿Qué se visitó por la tarde el 18 de septiembre de 2024 en Toronto, Canadá?")
 
-question = st.text_input("Pregunta")
+tabs = st.tabs(["💬 Chat", "🕘 Historial"])
 
-col1, col2 = st.columns([1, 3])
-with col1:
-    do_ask = st.button("Preguntar", type="primary", use_container_width=True)
+with tabs[0]:
+    q = st.text_input("Pregunta", "")
+    ask = st.button("Preguntar", type="primary")
 
-if do_ask and question.strip():
-    with st.spinner("Buscando en tu base y generando respuesta…"):
-        try:
-            ans, srcs = call_qa(
-                question=question.strip(),
-                db=db_dir,
-                collection=collection,
-                model=model,
-                temp=temp,
-                k=k,
-                mode=mode,
-                rerank_top=rerank_top,
-            )
-            st.success(ans)
+    if ask and q.strip():
+        t0 = time.time()
+        ans, srcs = call_qa(
+            question=q.strip(),
+            db=db_dir,
+            collection=collection,
+            model=model,
+            temp=temp,
+            k=k,
+            use_rerank=use_rerank,
+            rerank_top=rerank_top,
+        )
+        dt = time.time() - t0
 
-            if show_sources and srcs:
-                st.markdown("**Fuentes**")
-                for (src, cid) in srcs:
-                    st.code(f"{src} · chunk_id={cid}", language="text")
-        except Exception as e:
-            st.error(f"Ocurrió un error: {e}")
-            st.info("Verifica que el índice exista (chroma_db) y que tu servidor Ollama esté activo si usas un LLM local.")
-else:
-    st.info("Introduce una pregunta y pulsa **Preguntar**.")
+        # Persistimos en historial
+        st.session_state.history.append({
+            "t": datetime.now().strftime("%H:%M:%S"),
+            "q": q.strip(),
+            "a": ans,
+            "sources": srcs,
+            "latency_s": round(dt, 3),
+            "k": k,
+            "mode": st.session_state.mode_choice,
+        })
+
+        st.success(ans)
+
+        # Copiar respuesta
+        st.markdown(copy_to_clipboard_js(ans), unsafe_allow_html=True)
+
+        # Fuentes
+        if show_sources and srcs:
+            st.subheader("Fuentes")
+            for s in srcs:
+                st.code(f"{s[0]} · chunk_id={s[1]}")
+
+with tabs[1]:
+    st.subheader("Historial detallado")
+    if not st.session_state.history:
+        st.info("Aún no hay entradas.")
+    else:
+        for i, h in enumerate(reversed(st.session_state.history), 1):
+            with st.expander(f"{i:02d} · {h['t']} · {h['q'][:72]}…"):
+                st.markdown(f"**Pregunta:** {h['q']}")
+                st.markdown(f"**Respuesta:** {h['a']}")
+                st.markdown(f"**Modo/k:** {h['mode']} / {h['k']}  •  **Latencia:** {h['latency_s']} s")
+                if h.get("sources"):
+                    st.markdown("**Fuentes:**")
+                    for s in h["sources"]:
+                        st.code(f"{s[0]} · chunk_id={s[1]}")
+
+        # Exportar historial como JSON
+        export_bytes = json.dumps(st.session_state.history, ensure_ascii=False, indent=2).encode("utf-8")
+        st.download_button("📥 Exportar historial (JSON)", data=export_bytes,
+                           file_name="historial_rag.json", mime="application/json")
