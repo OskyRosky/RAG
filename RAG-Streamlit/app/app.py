@@ -1,218 +1,178 @@
 # app/app.py
-# ──────────────────────────────────────────────────────────────────────────────
-# Streamlit UI para tu RAG:
-# - Modos fast/accurate/custom
-# - Historial de consultas (memoria de sesión)
-# - Botón “Copiar respuesta” (JS simple) y exportar conversación (JSON)
-# - Retrocompatible con distintas firmas de rag.qa.answer
-# ──────────────────────────────────────────────────────────────────────────────
+"""
+Streamlit UI para tu RAG (demo viajes)
+- UI minimal: pregunta, modos (fast/accurate/custom), k, mostrar fuentes.
+- Botón de 'copiar respuesta' como icono (SVG) con Clipboard API.
+- Cachea el VectorStore para reducir latencia sin modificar rag/qa.py.
+- Llamada retrocompatible a rag.qa.answer (inspecciona la firma y pasa solo args soportados).
+"""
 
-import sys, pathlib, inspect, json, time
-from datetime import datetime
+import sys
+import pathlib
+import json
+import inspect
+from pathlib import Path
+from typing import Dict, Any, List, Tuple
 
 import streamlit as st
+from streamlit.components.v1 import html as st_html
 
-# Hacemos import del paquete local "rag"
+# ──────────────────────────────────────────────────────────────────────────────
+# Habilitar importación del paquete 'rag' desde la raíz del repo
+# ──────────────────────────────────────────────────────────────────────────────
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from rag.qa import answer as qa_answer  # pipeline principal
+from rag.qa import answer as qa_answer
+import rag.qa as rag_qa
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Helpers
+# Cachear VectorStore/Embeddings SIN tocar rag/qa.py
 # ──────────────────────────────────────────────────────────────────────────────
+_original_loader = rag_qa.load_vectorstore
 
-def call_qa(question: str, db: str, collection: str, model: str, temp: float,
-            k: int, use_rerank: bool, rerank_top: int):
-    """
-    Llama a rag.qa.answer pasando solo los argumentos que existan en la firma.
-    Retrocompatible con versiones previas.
-    """
+@st.cache_resource(show_spinner=False)
+def _cached_vs(db_dir: str, collection: str):
+    return _original_loader(Path(db_dir), collection)
+
+rag_qa.load_vectorstore = _cached_vs
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Utilidades UI
+# ──────────────────────────────────────────────────────────────────────────────
+def render_copy_icon(text: str, key: str = "copy_icon_key"):
+    """Botón de copiar (solo icono) con Clipboard API."""
+    payload = json.dumps(text)
+    st_html(f"""
+    <div style="margin-top:8px;">
+      <button id="copy-btn-{key}"
+              title="Copiar respuesta"
+              style="background:transparent;border:0;cursor:pointer;
+                     display:inline-flex;align-items:center;gap:6px;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+             viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4
+                   a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+        </svg>
+      </button>
+      <span id="copied-{key}" style="display:none;margin-left:6px;color:#13c27a;
+                               font-size:12px;">¡Copiado!</span>
+    </div>
+    <script>
+      const btn = document.getElementById('copy-btn-{key}');
+      const copied = document.getElementById('copied-{key}');
+      btn.addEventListener('click', async () => {{
+        try {{
+          await navigator.clipboard.writeText({payload});
+          copied.style.display = 'inline';
+          setTimeout(() => copied.style.display='none', 1200);
+        }} catch(e) {{ console.log(e); }}
+      }});
+    </script>
+    """, height=40)
+
+def call_qa(
+    question: str,
+    db: str,
+    collection: str,
+    model: str,
+    k: int,
+    mode: str,
+) -> Tuple[str, List[Tuple[str, str]]]:
+    """Construye kwargs según la firma de rag.qa.answer. Temp=0, sin re-rank."""
     sig = inspect.signature(qa_answer)
     params = sig.parameters
 
-    kwargs = {}
+    if mode == "fast":
+        threshold = 0.30
+        prefetch = max(20, k * 2)
+    elif mode == "accurate":
+        threshold = 0.25
+        prefetch = max(36, k * 3)
+    else:
+        threshold = 0.28
+        prefetch = max(30, int(k * 2.5))
+
+    kwargs: Dict[str, Any] = {}
     for key, val in [
         ("question", question),
         ("db", db),
         ("collection", collection),
         ("model", model),
-        ("temp", temp),
+        ("temp", 0.0),   # 🔒 siempre 0
         ("k", k),
     ]:
         if key in params:
             kwargs[key] = val
 
-    if "mode" in params:
-        # Si tu qa.py soporta 'mode', respétalo según los toggles (fast/accurate/custom)
-        kwargs["mode"] = st.session_state.get("mode_choice", "fast")
-
-    # re-rank
+    if "threshold" in params:
+        kwargs["threshold"] = float(threshold)
+    if "prefetch" in params:
+        kwargs["prefetch"] = int(prefetch)
     if "rerank_top" in params:
-        kwargs["rerank_top"] = (rerank_top if use_rerank else 0)
-    if "use_rerank" in params:
-        kwargs["use_rerank"] = bool(use_rerank)
-
-    # thresholds/prefetch si existen (custom)
-    if kwargs.get("mode") == "custom":
-        if "threshold" in params:
-            kwargs["threshold"] = st.session_state.get("threshold_custom", 0.30)
-        if "prefetch" in params:
-            kwargs["prefetch"] = st.session_state.get("prefetch_custom", max(40, k * 4))
+        kwargs["rerank_top"] = 0  # 🔒 sin re-rank
 
     return qa_answer(**kwargs)
-
-
-def copy_to_clipboard_js(text: str):
-    """
-    Devuelve un HTML con JS para copiar 'text' al portapapeles.
-    Streamlit ≥1.32 soporta st.html; si no, se ignora silenciosamente.
-    """
-    escaped = json.dumps(text)  # escapa correctamente
-    return f"""
-    <script>
-    async function copyRagText() {{
-        try {{
-            await navigator.clipboard.writeText({escaped});
-            const el = document.getElementById('copied-toast');
-            if (el) {{ el.style.display = 'block'; setTimeout(()=> el.style.display='none', 1500); }}
-        }} catch(err) {{
-            console.log('copy failed', err);
-        }}
-    }}
-    </script>
-    <div style="display:none" id="copied-toast">Copiado ✅</div>
-    <button onclick="copyRagText()" style="
-        background:#ea4b4b;color:white;border:0;border-radius:8px;padding:8px 12px;cursor:pointer;">
-        Copiar respuesta
-    </button>
-    """
-
-
-def init_state():
-    if "history" not in st.session_state:
-        st.session_state.history = []  # lista de dicts {t, q, a, sources}
-    if "mode_choice" not in st.session_state:
-        st.session_state.mode_choice = "fast"
-    if "threshold_custom" not in st.session_state:
-        st.session_state.threshold_custom = 0.30
-    if "prefetch_custom" not in st.session_state:
-        st.session_state.prefetch_custom = 40
-
 
 # ──────────────────────────────────────────────────────────────────────────────
 # UI
 # ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="RAG de Viajes — Demo", page_icon="🧭", layout="wide")
-init_state()
 
 with st.sidebar:
     st.header("⚙️ Configuración")
-
-    db_dir = st.text_input("Directorio Chroma DB", "chroma_db")
-    collection = st.text_input("Colección", "trips_rag")
-    model = st.text_input("Modelo (Ollama)", "llama3.3")
-    temp = st.slider("Temperatura", 0.0, 1.0, 0.0, 0.01)
+    db_dir = st.text_input("Directorio Chroma DB", "chroma_db", key="db_dir")
+    collection = st.text_input("Colección", "trips_rag", key="collection")
+    model = st.text_input("Modelo (Ollama)", "llama3.3", key="model")
 
     st.markdown("**Modo**")
-    colm1, colm2, colm3 = st.columns([1,1,1])
-    with colm1:
-        if st.radio(" ", ["fast", "accurate", "custom"], index=["fast","accurate","custom"].index(st.session_state.mode_choice), label_visibility="collapsed", key="mode_choice") == "fast":
-            pass
+    mode = st.radio(
+        label="Modo",
+        options=["fast", "accurate", "custom"],
+        index=0,
+        key="mode_radio",
+        label_visibility="collapsed",
+    )
+    k = st.slider("k (contexto)", 4, 20, 12, 1, key="k_slider")
 
-    # Parámetros por modo
-    if st.session_state.mode_choice == "fast":
-        k = st.slider("k (contexto)", 4, 16, 12, 1)
-        use_rerank = st.checkbox("Usar re-rank (si disponible)", value=False)
-        rerank_top = st.slider("Top re-rank", 2, 12, 6, 1, disabled=not use_rerank)
+    show_sources = st.checkbox("Mostrar fuentes", value=True, key="show_sources")
 
-    elif st.session_state.mode_choice == "accurate":
-        k = st.slider("k (contexto)", 8, 20, 12, 1)
-        use_rerank = st.checkbox("Usar re-rank (si disponible)", value=True)
-        rerank_top = st.slider("Top re-rank", 4, 12, 8, 1, disabled=not use_rerank)
-
-    else:  # custom
-        k = st.slider("k (contexto)", 4, 24, 12, 1)
-        st.session_state.threshold_custom = st.slider("threshold", 0.0, 0.8, st.session_state.threshold_custom, 0.01)
-        st.session_state.prefetch_custom = st.slider("prefetch", 8, 96, st.session_state.prefetch_custom, 1)
-        use_rerank = st.checkbox("Usar re-rank (si disponible)", value=False)
-        rerank_top = st.slider("Top re-rank", 2, 12, 8, 1, disabled=not use_rerank)
-
-    show_sources = st.checkbox("Mostrar fuentes", value=True)
-    st.divider()
-
-    # Historial en sidebar (resumen)
-    st.subheader("🕘 Historial (resumen)")
-    if st.session_state.history:
-        for i, h in enumerate(reversed(st.session_state.history[:10]), 1):
-            st.caption(f"{h['t']} • {h['q'][:48]}…")
-    if st.button("🧹 Limpiar historial"):
-        st.session_state.history.clear()
-        st.success("Historial limpiado.")
-
-st.title("🧭 RAG de Viajes – Demo")
+st.title("🚀 RAG de Viajes – Demo")
 st.write("Escribe una pregunta basada en tus viajes. Ejemplos:")
-st.markdown("• ¿Dónde se almorzó el 16 de mayo de 2024 en Brasil? • ¿Dónde se cenó el 6 de agosto de 2024 en Bangkok, Tailandia? • ¿Qué se visitó por la tarde el 18 de septiembre de 2024 en Toronto, Canadá?")
+st.markdown("• ¿Dónde se almorzó el 16 de mayo de 2024 en Brasil? • "
+            "¿Dónde se cenó el 6 de agosto de 2024 en Bangkok, Tailandia? • "
+            "¿Qué se visitó por la tarde el 18 de septiembre de 2024 en Toronto, Canadá?")
 
-tabs = st.tabs(["💬 Chat", "🕘 Historial"])
+question = st.text_input("Pregunta", "", key="question_input")
 
-with tabs[0]:
-    q = st.text_input("Pregunta", "")
-    ask = st.button("Preguntar", type="primary")
+col1, _ = st.columns([1, 3])
+with col1:
+    ask = st.button("Preguntar", type="primary", key="ask_btn")
 
-    if ask and q.strip():
-        t0 = time.time()
-        ans, srcs = call_qa(
-            question=q.strip(),
-            db=db_dir,
-            collection=collection,
-            model=model,
-            temp=temp,
-            k=k,
-            use_rerank=use_rerank,
-            rerank_top=rerank_top,
-        )
-        dt = time.time() - t0
+if not question:
+    st.info("Introduce una pregunta y pulsa **Preguntar**.")
+elif ask:
+    with st.spinner("Buscando en tus documentos…"):
+        try:
+            ans, srcs = call_qa(
+                question=question,
+                db=db_dir,
+                collection=collection,
+                model=model,
+                k=k,
+                mode=mode,
+            )
+        except Exception as e:
+            st.error(f"Error al obtener respuesta: {e}")
+            st.stop()
 
-        # Persistimos en historial
-        st.session_state.history.append({
-            "t": datetime.now().strftime("%H:%M:%S"),
-            "q": q.strip(),
-            "a": ans,
-            "sources": srcs,
-            "latency_s": round(dt, 3),
-            "k": k,
-            "mode": st.session_state.mode_choice,
-        })
+    st.success(ans)
+    render_copy_icon(ans, key="copy_answer_icon")
 
-        st.success(ans)
-
-        # Copiar respuesta
-        st.markdown(copy_to_clipboard_js(ans), unsafe_allow_html=True)
-
-        # Fuentes
-        if show_sources and srcs:
-            st.subheader("Fuentes")
-            for s in srcs:
-                st.code(f"{s[0]} · chunk_id={s[1]}")
-
-with tabs[1]:
-    st.subheader("Historial detallado")
-    if not st.session_state.history:
-        st.info("Aún no hay entradas.")
-    else:
-        for i, h in enumerate(reversed(st.session_state.history), 1):
-            with st.expander(f"{i:02d} · {h['t']} · {h['q'][:72]}…"):
-                st.markdown(f"**Pregunta:** {h['q']}")
-                st.markdown(f"**Respuesta:** {h['a']}")
-                st.markdown(f"**Modo/k:** {h['mode']} / {h['k']}  •  **Latencia:** {h['latency_s']} s")
-                if h.get("sources"):
-                    st.markdown("**Fuentes:**")
-                    for s in h["sources"]:
-                        st.code(f"{s[0]} · chunk_id={s[1]}")
-
-        # Exportar historial como JSON
-        export_bytes = json.dumps(st.session_state.history, ensure_ascii=False, indent=2).encode("utf-8")
-        st.download_button("📥 Exportar historial (JSON)", data=export_bytes,
-                           file_name="historial_rag.json", mime="application/json")
+    if show_sources and srcs:
+        st.subheader("Fuentes")
+        for s in srcs:
+            st.code(f"{s[0]} · chunk_id={s[1]}", language="text")
