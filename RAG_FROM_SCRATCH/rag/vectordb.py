@@ -12,118 +12,121 @@ Notas:
 - Persistencia en disco con Chroma (carpeta --db).
 """
 
-import argparse
+import os
 import json
-import shutil
+import argparse
 from pathlib import Path
 from statistics import mean, median
 
-from langchain_community.vectorstores import Chroma
+# Silencio de barras/avisos
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
 from langchain_community.embeddings import FastEmbedEmbeddings
+from langchain_chroma import Chroma
 from langchain_core.documents import Document
-from langchain_community.embeddings import FastEmbedEmbeddings
+
 
 def build_embeddings():
-    # Modelo multilingüe, liviano y de buena calidad
+    # Embedding multilingüe, ligero y muy competente en español
     return FastEmbedEmbeddings(model_name="intfloat/multilingual-e5-small")
 
 
-def load_chunks(jsonl_path: Path):
-    assert jsonl_path.exists(), f"No se encontró: {jsonl_path}"
+def load_jsonl(p: Path):
+    assert p.exists(), f"No se encontró el archivo: {p}"
     docs = []
-    with jsonl_path.open("r", encoding="utf-8") as f:
+    with p.open("r", encoding="utf-8") as f:
         for line in f:
-            if not line.strip():
-                continue
-            obj = json.loads(line)
-            text = (obj.get("text") or "").strip()
-            if not text:
-                continue
-            meta = obj.get("metadata") or {}
-            meta.setdefault("source", "Trips.txt")
-            meta.setdefault("chunk_id", obj.get("id"))
+            rec = json.loads(line)
+            text = rec.get("text", "").strip()
+            meta = rec.get("metadata", {})
             docs.append(Document(page_content=text, metadata=meta))
     return docs
 
-def build_stats(docs):
-    lengths = [len(d.page_content) for d in docs] if docs else []
-    return {
-        "n": len(docs),
-        "min": min(lengths) if lengths else 0,
-        "max": max(lengths) if lengths else 0,
-        "mean": mean(lengths) if lengths else 0.0,
-        "median": median(lengths) if lengths else 0.0,
-    }
 
-def wipe_dir(path: Path):
-    if path.exists():
-        shutil.rmtree(path)
-
-def index_documents(docs, db_dir: Path, collection: str):
-    embeddings = FastEmbedEmbeddings()
-    vs = Chroma.from_documents(
-        documents=docs,
-        embedding=embeddings,
+def build_chroma(db_dir: Path, collection: str, docs: list[Document]):
+    emb = build_embeddings()
+    vs = Chroma(
         persist_directory=str(db_dir),
         collection_name=collection,
+        embedding_function=emb,
     )
-    vs.persist()
+    # Cargar docs desde cero
+    if docs:
+        vs.add_documents(docs)
+        # Desde Chroma 0.4.x persiste automático, pero dejamos la llamada por compat
+        try:
+            vs.persist()
+        except Exception:
+            pass
     return vs
 
-def load_vectorstore(db_dir: Path, collection: str):
-    embeddings = FastEmbedEmbeddings()
+
+def get_vs(db_dir: Path, collection: str):
+    emb = build_embeddings()
     return Chroma(
         persist_directory=str(db_dir),
         collection_name=collection,
-        embedding_function=embeddings,
+        embedding_function=emb,
     )
 
-def test_query(vs: Chroma, query: str, k: int = 5):
-    # Retorna documentos + puntajes de relevancia
-    results = vs.similarity_search_with_relevance_scores(query, k=k)
-    return results
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--in", dest="inp", help="Ruta a data/chunks.jsonl (solo para indexar)")
-    ap.add_argument("--db", dest="db", default="chroma_db", help="Directorio de la base Chroma")
-    ap.add_argument("--collection", default="trips_rag", help="Nombre de colección")
-    ap.add_argument("--rebuild", action="store_true", help="Eliminar y reconstruir el índice")
-    ap.add_argument("--stats", action="store_true", help="Imprimir métricas de chunks al indexar")
-    ap.add_argument("--test", dest="test_query", help="Consulta de prueba")
-    ap.add_argument("--k", type=int, default=5, help="Top-k para prueba")
+    ap.add_argument("--in", dest="inp", help="JSONL de chunks")
+    ap.add_argument("--db", default="chroma_db")
+    ap.add_argument("--collection", default="trips_rag")
+    ap.add_argument("--rebuild", action="store_true", help="Borra y reconstruye el índice")
+    ap.add_argument("--stats", action="store_true", help="Imprime estadísticas básicas")
+    ap.add_argument("--test", help="Consulta de prueba al índice")
+    ap.add_argument("--k", type=int, default=5)
     args = ap.parse_args()
 
     db_dir = Path(args.db)
 
     if args.rebuild:
-        assert args.inp, "--in es requerido cuando usas --rebuild"
-        print("🧱 Reconstruyendo índice desde cero…")
-        wipe_dir(db_dir)
-        jsonl_path = Path(args.inp)
-        docs = load_chunks(jsonl_path)
-        if args.stats:
-            s = build_stats(docs)
-            print("📦 Documentos a indexar:", s["n"])
-            print(f"🔤 len chars → min {s['min']}, median {s['median']:.1f}, mean {s['mean']:.1f}, max {s['max']}")
-        vs = index_documents(docs, db_dir, args.collection)
-        print(f"✅ Índice creado y persistido en '{db_dir}' (colección: {args.collection})")
+        # reconstrucción total
+        if db_dir.exists():
+            import shutil
+            shutil.rmtree(db_dir)
+        docs = load_jsonl(Path(args.inp))
+        if args.stats and docs:
+            lens = [len(d.page_content) for d in docs]
+            print(f"📦 Documentos a indexar: {len(docs)}")
+            print(f"🔤 len chars → min {min(lens)}, median {median(lens)}, mean {mean(lens):.1f}, max {max(lens)}")
+        _ = build_chroma(db_dir, args.collection, docs)
+        print(f"✅ Índice creado y persistido en '{args.db}' (colección: {args.collection})")
 
-    # Si no reconstruimos, cargamos (o también tras indexar, por si quieres probar inmediatamente)
-    vs = load_vectorstore(db_dir, args.collection)
+    # modo test o stats contra un índice existente
+    vs = get_vs(db_dir, args.collection)
 
-    if args.test_query:
-        print(f"\n🔎 TEST QUERY (k={args.k}): {args.test_query}")
-        results = test_query(vs, args.test_query, k=args.k)
-        if not results:
-            print("⚠️ Sin resultados.")
-            return
-        for i, (doc, score) in enumerate(results, 1):
-            preview = doc.page_content[:240].replace("\n", " ")
-            if len(doc.page_content) > 240:
-                preview += "..."
-            print(f"\n[{i}] score={score:.4f} | source={doc.metadata.get('source')} | chunk_id={doc.metadata.get('chunk_id')}")
-            print(preview)
+    if args.test:
+        query = args.test
+        try:
+            results = vs.similarity_search_with_relevance_scores(query, k=args.k)
+            # lista de (Document, score 0..1)
+            print(f"\n🔎 TEST QUERY (k={args.k}): {query}\n")
+            for i, (d, s) in enumerate(results, 1):
+                src = d.metadata.get("source", "Trips.txt")
+                cid = d.metadata.get("chunk_id", "?")
+                prev = d.page_content[:300].replace("\n", " ")
+                print(f"[{i}] score={s:.4f} | source={src} | chunk_id={cid}\n{prev}...\n")
+        except Exception:
+            # fallback para versiones antiguas
+            results = vs.similarity_search_with_score(query, k=args.k)
+            print(f"\n🔎 TEST QUERY (k={args.k}): {query}\n")
+            for i, (d, dist) in enumerate(results, 1):
+                # convertimos distancia a pseudo-relevancia
+                try:
+                    s = 1.0 / (1.0 + float(dist))
+                except Exception:
+                    s = 0.0
+                src = d.metadata.get("source", "Trips.txt")
+                cid = d.metadata.get("chunk_id", "?")
+                prev = d.page_content[:300].replace("\n", " ")
+                print(f"[{i}] score~={s:.4f} | source={src} | chunk_id={cid}\n{prev}...\n")
+
 
 if __name__ == "__main__":
     main()
