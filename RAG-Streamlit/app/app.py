@@ -9,6 +9,14 @@ Ejecuta:
   streamlit run app/app.py
 """
 
+# ⬇️ añade esto arriba del todo, antes del "from rag.qa import ..."
+import sys, pathlib
+ROOT = pathlib.Path(__file__).resolve().parents[1]  # carpeta raíz del repo
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+
+
 import os
 import inspect
 import warnings
@@ -22,6 +30,12 @@ os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 # Importa tu pipeline de QA
+# ⬇️ añade esto arriba del todo, antes del "from rag.qa import ..."
+import sys, pathlib
+ROOT = pathlib.Path(__file__).resolve().parents[1]  # carpeta raíz del repo
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from rag.qa import answer as qa_answer  # <- usamos la misma función del proyecto
 
 
