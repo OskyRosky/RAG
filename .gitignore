@@ -24,3 +24,34 @@ Test RAG 2024/RAG/TestTutorial/
 RAG_FROM_SCRATCH/.venv/
 Test RAG 2024/RAG/Tutorial/chroma_persistent_storage/
 *.sqlite3
+
+# entornos y dependencias locales
+.venv/
+env/
+venv/
+
+# bases vectoriales y caches locales
+chroma_db/
+*.sqlite3
+*.parquet
+*.faiss
+.cache/
+.huggingface/
+__pycache__/
+*.pyc
+
+# SO / editores
+.DS_Store
+.idea/
+.vscode/
+.ipynb_checkpoints/
+
+# outputs y archivos grandes generados
+data/*.pdf
+data/*.docx
+data/*.csv
+data/*.xlsx
+data/*.zip
+
+# permite estos datos pequeños de ejemplo
+!data/Trips.txt
