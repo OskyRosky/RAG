@@ -41,24 +41,34 @@ Contexto (fragmentos recuperados):
 """
 
 def load_vectorstore(db_dir: Path, collection: str) -> Chroma:
-    emb = FastEmbedEmbeddings()
+    emb = FastEmbedEmbeddings(model_name="intfloat/multilingual-e5-small")
     return Chroma(
         persist_directory=str(db_dir),
         collection_name=collection,
         embedding_function=emb,
     )
 
-def retrieve(vs: Chroma, query: str, k: int = 15) -> List[Document]:
-    """
-    Recupera usando MMR para mayor diversidad y recall.
-    - k: número final de documentos a pasar al LLM.
-    - fetch_k: candidatos iniciales (amplio para cubrir variantes).
-    """
-    retriever = vs.as_retriever(
-        search_type="mmr",
-        search_kwargs={"k": k, "fetch_k": 60},
-    )
-    return retriever.invoke(query)
+def _similarity_with_scores(vs: Chroma, query: str, k: int) -> List[Tuple[Document, float]]:
+    """Devuelve lista de (doc, score). Intenta relevancia 0..1 y si no, convierte desde distancia."""
+    try:
+        return vs.similarity_search_with_relevance_scores(query, k=k)
+    except Exception:
+        docs_scores = vs.similarity_search_with_score(query, k=k)
+        converted = []
+        for doc, dist in docs_scores:
+            try:
+                rel = 1.0 / (1.0 + float(dist))
+            except Exception:
+                rel = 0.0
+            converted.append((doc, rel))
+        return converted
+
+def retrieve(vs: Chroma, query: str, k: int = 10, threshold: float = 0.30) -> List[Document]:
+    docs_scores = _similarity_with_scores(vs, query, k=k)
+    filtered = [(d, s) for (d, s) in docs_scores if s >= threshold]
+    if not filtered:
+        filtered = docs_scores
+    return [d for (d, _) in filtered]
 
 def format_context(docs: List[Document]) -> str:
     if not docs:
@@ -67,7 +77,7 @@ def format_context(docs: List[Document]) -> str:
 
 def answer(question: str, db: str, collection: str, model: str, temp: float, k: int) -> Tuple[str, List[Tuple[str, str]]]:
     vs = load_vectorstore(Path(db), collection)
-    docs = retrieve(vs, question, k=k)
+    docs = retrieve(vs, question, k=k, threshold=0.30)
     context = format_context(docs)
 
     prompt = ChatPromptTemplate.from_messages([
@@ -78,7 +88,7 @@ def answer(question: str, db: str, collection: str, model: str, temp: float, k: 
     llm = get_llm(model=model, temperature=temp)
     resp = llm.invoke(prompt)
 
-    srcs = [(d.metadata.get("source","?"), d.metadata.get("chunk_id","?")) for d in docs]
+    srcs = [(d.metadata.get("source","Trips.txt"), d.metadata.get("chunk_id","?")) for d in docs]
     return resp.content.strip(), srcs
 
 def main():
@@ -87,7 +97,7 @@ def main():
     ap.add_argument("--collection", default="trips_rag")
     ap.add_argument("--model", default="llama3.3")
     ap.add_argument("--temp", type=float, default=0.0)
-    ap.add_argument("--k", type=int, default=15)  # default subido para más recall
+    ap.add_argument("--k", type=int, default=10)
     ap.add_argument("--question", required=True)
     ap.add_argument("--show-sources", action="store_true", help="Imprime fuentes recuperadas")
     args = ap.parse_args()
