@@ -21,6 +21,12 @@ from statistics import mean, median
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import FastEmbedEmbeddings
 from langchain_core.documents import Document
+from langchain_community.embeddings import FastEmbedEmbeddings
+
+def build_embeddings():
+    # Modelo multilingüe, liviano y de buena calidad
+    return FastEmbedEmbeddings(model_name="intfloat/multilingual-e5-small")
+
 
 def load_chunks(jsonl_path: Path):
     assert jsonl_path.exists(), f"No se encontró: {jsonl_path}"
