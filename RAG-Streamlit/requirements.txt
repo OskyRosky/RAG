@@ -1,16 +1,29 @@
+# ────────────────────────────────
+# Core LangChain + Vector DB
+# ────────────────────────────────
 langchain==0.2.17
 langchain-core==0.2.43
 langchain-community==0.2.17
 langchain-chroma==0.1.2
 chromadb==0.5.4
+langchain-text-splitters==0.2.2
+langchain-ollama==0.1.0
 
+# ────────────────────────────────
+# Embeddings / Modelos / NLP
+# ────────────────────────────────
 sentence-transformers==5.1.1
 torch==2.9.0
-
-langchain-text-splitters==0.2.2
 pypdf==4.3.1
-langchain-ollama==0.1.0
+
+# ────────────────────────────────
+# Utilidades
+# ────────────────────────────────
 httpx==0.27.2
 tqdm==4.66.5
-streamlit-1.50.0
-watchdog-6.0.0
+watchdog==6.0.0
+
+# ────────────────────────────────
+# Interfaz Streamlit
+# ────────────────────────────────
+streamlit==1.50.0
