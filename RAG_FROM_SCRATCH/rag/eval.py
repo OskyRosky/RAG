@@ -9,7 +9,7 @@ Uso:
 Opcional:
   --csv results_eval.csv        # exporta resultados
   --threshold 0.75              # similitud difusa mínima (0..1)
-  --verbose                     # muestra también el esperado si falla
+  --verbose                     # muestra también el esperado si falla.   
 """
 
 import argparse
