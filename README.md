@@ -27,10 +27,15 @@ The project relies on a modern, modular AI ecosystem:
 3.  **Features** 🤳🏽
 
 	•	🔍 Contextual Retrieval: Retrieves only relevant information for each query.
+	
 	•	🧾 Semantic Chunking: Splits long texts into meaningful, traceable fragments.
+	
 	•	🧠 Factual Reasoning: The LLM answers strictly from retrieved context, avoiding hallucinations.
+	
 	•	📊 Evaluation Suite: Automatic tests with fuzzy-matching and confusion matrix analysis.
+	
 	•	🖥️ Streamlit Interface: A clean and intuitive UI for querying, viewing responses, and exporting histories.
+	
 	•	🐳 Dockerized Deployment: Fully containerized build for quick local or cloud execution.
 
 4.  **Process** 👣
