@@ -33,7 +33,7 @@ To run the analyses included in this repository:
 
 i. Clone the repository
 bash
-git clone https://github.com/your-username/time-series-repo.git
+git clone https://github.com/your-username/rag.git
 cd time-series-repo
 
 ii. Install dependencies
