@@ -7,49 +7,101 @@
 
 1.  **Intro** 🧳
 
+This repository presents a complete Retrieval-Augmented Generation (RAG) system designed to enhance Large Language Model (LLM) factual accuracy.
+It integrates document ingestion, semantic chunking, vector embeddings, retrieval, and contextual generation into a single, auditable workflow.
+The system was built to demonstrate how structured information pipelines can transform unstructured data into grounded, explainable answers.
+
 2.  **Tech Stack** 🤖
+
+The project relies on a modern, modular AI ecosystem:
+
+	•	Python 3.12 as the main programming environment.
+	•	LangChain for orchestration of retrieval and LLM components.
+	•	ChromaDB as the vector store for semantic indexing.
+	•	Sentence Transformers for multilingual embeddings.
+	•	Ollama for local LLM inference (e.g., Llama 3).
+	•	Streamlit for the interactive front-end UI.
+	•	Docker for reproducible and portable deployments.
+
 
 3.  **Features** 🤳🏽
 
+	•	🔍 Contextual Retrieval: Retrieves only relevant information for each query.
+	•	🧾 Semantic Chunking: Splits long texts into meaningful, traceable fragments.
+	•	🧠 Factual Reasoning: The LLM answers strictly from retrieved context, avoiding hallucinations.
+	•	📊 Evaluation Suite: Automatic tests with fuzzy-matching and confusion matrix analysis.
+	•	🖥️ Streamlit Interface: A clean and intuitive UI for querying, viewing responses, and exporting histories.
+	•	🐳 Dockerized Deployment: Fully containerized build for quick local or cloud execution.
+
 4.  **Process** 👣
 
-The repository follows a well-defined time series workflow:
+The repository follows a structured RAG pipeline workflow:
+
+	1.	Information Ingestion → Extract and normalize documents from multiple formats (PDF, DOCX, JSON, etc.).
+	2.	Data Chunking → Split texts into semantic chunks while preserving metadata.
+	3.	Embedding Generation → Encode each chunk into high-dimensional vectors.
+	4.	Vector Indexing → Store embeddings in ChromaDB for similarity-based retrieval.
+	5.	Query Processing → Convert user input into embeddings and match relevant chunks.
+	6.	LLM Generation → Produce grounded, factual responses using retrieved context.
+	7.	Evaluation → Test and measure retrieval precision, recall, and QA accuracy.
+	8.	Deployment → Expose the model via Streamlit or containerized Docker builds.
 
 5.  **Learning** 💡
 
+This repository serves as a practical guide for professionals interested in:
+	•	Understanding how retrieval enhances LLM factual grounding.
+	•	Experimenting with embeddings, similarity search, and prompt engineering.
+	•	Learning to optimize RAG performance through tuning and evaluation.
+	•	Building production-ready AI systems that remain transparent and auditable.
+
 6.  **Improvement** 🔩
 
-Future enhancements to the repository include:
-
-- Advanced Deep Learning Approaches: Transformers for time series forecasting
-- Automated Feature Engineering: Using TSFresh and other automated techniques
-- Cloud-based Pipelines: Fully automated time series pipelines in AWS/GCP
-- Anomaly Detection Frameworks: More robust outlier detection and handling methods
-- Industry-Specific Case Studies: Tailored examples for finance, energy, healthcare, and more
+Future improvements to the system include:
+	•	Integration with FAISS, Weaviate, or Qdrant for large-scale retrieval.
+	•	Automated RAGAS evaluation for faithfulness and answer quality.
+	•	Dynamic retraining pipelines for continuous document ingestion.
+	•	Multi-agent reasoning to combine retrieval, summarization, and verification.
+	•	Cloud-ready CI/CD deployment and model versioning.
 
 7.  **Running the Project** ⚙️
 
-To run the analyses included in this repository:
+To launch the RAG demo on your system:
 
 i. Clone the repository
-bash
-git clone https://github.com/your-username/rag.git
-cd time-series-repo
+
+git clone https://github.com/yourusername/RAG-System.git
+cd RAG-Streamlit
+
 
 ii. Install dependencies
-pip install -r requirements.txt
+
+python -m venv .venv
+source .venv/bin/activate  # (Mac/Linux)
 
 iii. Run the Jupyter notebooks or scripts in the /notebooks or /src directory
+
+pip install -r requirements.txt
+
+iv. Build or rebuild the vector index (if needed):
+
+docker build -t rag-streamlit:latest .
+docker run -p 8501:8501 rag-streamlit:latest
+
+v. Run the Streamlit interface:
+
+streamlit run app/app.py
+
+vi. (Optional) Run the containerized version:
 
 Alternatively, you can execute the time series forecasting pipeline on Google Colab or deploy it using cloud services.
 
 8 .  **More** 🙌🏽
 
-For further discussions, contributions, or improvements, feel free to:
+For further discussions, contributions, or collaborations:
+	•	💬 Open an issue or pull request on GitHub.
+	•	🧠 Share feedback or new ideas to enhance RAG modularity and performance.
+	•	🧾 Cite this repository if you use it for research or educational purposes.
 
-- Raise an issue for suggestions or improvements
-- Fork and contribute to the repository
-- Connect on LinkedIn or Twitter for insights on time series forecasting
 
 
 ---------------------------------------------
