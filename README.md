@@ -398,11 +398,15 @@ In essence, optimization transforms a correct RAG into an efficient, production-
 
 XV. Deployment (UI Interface)
 
-	•	Interactive front-end for testing and demos.
-	•	Key UI elements: question box, response display, sources, history.
-	•	Session state and history export (JSON).
-	•	Modes of operation: fast, accurate, custom.
-	•	Design principles for clarity and minimal hallucination.
+A Retrieval-Augmented Generation system becomes truly useful when people can interact with it. A lightweight UI lets non-technical users ask questions, inspect sources, and build trust in the answers. You do not need a complex frontend to get value; a clear, honest interface that exposes what the model knows—and what it doesn’t—goes a long way.
+
+A simple interactive front-end serves three goals: it shortens the feedback loop during development, it demonstrates capabilities to stakeholders, and it provides a safe surface for end users to explore the system. Popular options include Streamlit (Pythonic, fast to iterate), Gradio (component-based demos), Open WebUI (LLM-centric web app you can extend with RAG tools), Dash (data-app oriented), or a custom React/Vue UI backed by FastAPI/Flask when you need more control. For hosted demos, Streamlit Community Cloud and Hugging Face Spaces make deployment trivial; for controlled environments, a Docker image ensures the same app runs identically on laptops, servers, or Kubernetes.
+
+An effective RAG UI keeps the surface minimal while exposing the right controls. The page usually contains a question input, a response panel, a sources section that lists the retrieved chunks, and a compact history. Session state tracks recent queries and answers so users can export a JSON of their session or share repro steps. If your pipeline supports multiple operating styles, present modes such as fast, accurate, and custom: fast favors latency with smaller k and no re-rank; accurate widens prefetch and applies heavier filtering; custom exposes advanced knobs for power users. This approach prevents parameter fatigue while preserving expert control when it matters.
+
+Good design actively reduces hallucination. The UI should set temperature to zero by default, display the exact sources used to answer, and make the “I don’t know” path explicit. Small details—like showing a loading indicator during retrieval, printing latency (e.g., retrieve vs. generate time), and handling timeouts or empty results with friendly messages—improve trust. Clear typography and restrained styling help users focus on content; affordances such as a “Copy answer” button, a “Clear” action, and keyboard shortcuts make the tool feel responsive. If privacy matters, add a visible toggle for analytics/telemetry and document what the app logs.
+
+Streamlit and Gradio excel for iteration because you write Python and get components, state, and layout out of the box. Open WebUI gives you a ready-made chat experience with model selection, and you can swap in your retriever and vector store behind the scenes. For long-term internal tools, a small React app with FastAPI often strikes the right balance between flexibility and maintainability. Whichever route you choose, aim for a UI that surfaces context, encourages verification, and fails safely—so your RAG remains understandable, auditable, and useful beyond the lab.
 
 ⸻
 
