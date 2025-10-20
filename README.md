@@ -294,41 +294,110 @@ Finally, a “safe-prompted” RAG system is not only about constraining the mod
 ⸻
 
 ## XI. The RAG Chain: Retrieve → Read
-	•	Description of the end-to-end pipeline.
-	•	Data flow between retrieval and generation.
-	•	Context assembly logic and source citation.
-	•	Integration inside LangChain or custom implementation.
 
+The RAG Chain represents the operational heart of a Retrieval-Augmented Generation system — the precise orchestration between retrieval and generation. Conceptually, it is a two-step pipeline where the system first retrieves relevant knowledge from external data sources, then reads and synthesizes that information to produce a coherent, factual response.
+
+In the Retrieve stage, the system converts the user’s query into an embedding and searches the vector store for semantically similar chunks. This phase determines what information will be accessible to the language model, acting as a gatekeeper for relevance. The retrieval mechanism ensures that only the most contextually aligned pieces of evidence are selected, thus grounding the next stage in factual data.
+
+In the Read stage, the LLM interprets the retrieved content, integrates it into its internal reasoning process, and generates a response. This step transforms structured data into natural language, balancing interpretability with accuracy. Here, the success of the RAG chain depends on how faithfully the model adheres to the retrieved context — a discipline enforced through safe prompting and low-temperature settings.
+
+When both phases operate in harmony, RAG becomes far more than a retrieval system or a language generator — it becomes a hybrid reasoning engine. The retrieval process anchors the model to real-world information, while the generation process allows it to explain and contextualize that information with linguistic fluency.
+
+However, even at this point, the system is not “complete.” The RAG chain provides the foundation for accurate responses, but continuous improvement comes from extending beyond it. After achieving a functional Retrieve → Read pipeline, developers typically move into QA evaluation, optimization, and robustness testing. These later phases assess how well the system handles ambiguity, missing context, or noisy data, and they fine-tune retrieval parameters for precision and recall.
+
+In essence, the Retrieve → Read chain marks both an endpoint and a beginning — the endpoint of the model’s reasoning process, and the beginning of its refinement cycle. A high-quality RAG does not stop at producing correct answers; it evolves through constant evaluation, learning where its retrieval fails, where its generation overreaches, and how the two can be further aligned. Each iteration makes the system not only smarter, but also more trustworthy.
+	
 ⸻
 
 ## XII. Question Answering (QA) Evaluation
-	•	Automatic testing of system accuracy.
-	•	Use of fuzzy matching to handle language variability.
-	•	Metrics: true positives, false negatives, accuracy rate.
-	•	Role of baseline tests in iterative improvement.
-	•	Example of confusion matrix interpretation.
+
+Once a RAG system is capable of retrieving and generating coherent answers, it must be evaluated systematically. This stage ensures that the model is not just producing fluent language, but delivering factually correct and contextually grounded answers. Evaluation is where the RAG pipeline transitions from a proof of concept to a verifiable, measurable system.
+
+The process begins by posing a set of benchmark questions to the model — queries designed to cover various aspects of the knowledge base (dates, locations, names, definitions, or procedural details). Each question has a known, expected answer derived directly from the ingested data. The RAG system’s responses are then compared against these expected answers, allowing developers to identify where it succeeds or fails.
+
+To quantify this, the evaluation behaves much like a confusion matrix in traditional machine learning. Every response is classified into one of four categories:
+	•	True Positive (TP): The model correctly finds and states the expected answer.
+	•	False Positive (FP): The model produces an incorrect answer or hallucinates information not found in the context.
+	•	True Negative (TN): The model correctly indicates that the information is not available in the retrieved context.
+	•	False Negative (FN): The model fails to provide an answer even though the information was available.
+
+From these values, key performance metrics can be derived, such as:
+	•	Accuracy: (TP + TN) / (TP + FP + TN + FN) — the overall correctness rate.
+	•	Precision: TP / (TP + FP) — the proportion of correct answers among all answers produced.
+	•	Recall: TP / (TP + FN) — the system’s ability to retrieve all relevant answers.
+	•	F1-Score: The harmonic mean of precision and recall, used when both matter equally.
+
+Because natural language allows for slight variations in phrasing, it is common to use fuzzy matching (e.g., Levenshtein or cosine similarity) to evaluate similarity between the model’s response and the expected answer. This prevents penalizing the system for stylistic differences like “Aprazível restaurant” vs. “the restaurant Aprazível.” Fuzzy matching enables a more human-like interpretation of correctness by measuring semantic closeness rather than exact word-by-word equality.
+
+A typical QA evaluation loop is structured as follows:
+	1.	A batch of questions is automatically fed to the RAG system.
+	2.	Each generated answer is compared to its ground truth using fuzzy similarity.
+	3.	A threshold (e.g., 0.75) determines whether the match is considered correct.
+	4.	The system logs results into a structured report or table of confusion metrics.
+	5.	Developers analyze false positives and negatives to understand failure patterns.
+
+This evaluation framework not only measures accuracy, but also drives iterative improvement. By studying where the system misinterprets questions or retrieves irrelevant documents, developers can adjust parameters like k, threshold, or prefetch, or enhance the embeddings and chunking strategy.
+
+While accuracy is the most intuitive metric, advanced RAG evaluations may include additional indicators such as context faithfulness (how well the answer aligns with the retrieved documents), latency (response time), or coverage (how many topics from the data are correctly addressed).
+
+Ultimately, QA evaluation transforms a RAG model from a black-box generator into a quantifiable reasoning system. Through continuous testing, visualization of confusion matrices, and metric tracking, the RAG pipeline evolves from “it seems correct” to “we can prove it is correct.”
 
 ⸻
 
 ## XIII. Splitter Improvements
-	•	Adaptive chunk sizing based on semantic density.
-	•	Automatic detection of contextual breaks (dates, titles, paragraphs).
-	•	Overlap tuning for continuity.
-	•	Text cohesion and coherence maintenance.
-	•	Impact on retrieval quality.
+
+As the RAG pipeline matures, one of the most effective ways to improve retrieval precision lies in refining the document splitter — the component responsible for dividing long texts into smaller, semantically meaningful units. A static or poorly tuned splitter can fragment ideas, disconnect related concepts, and reduce the ability of the retriever to find the correct context. By contrast, an adaptive splitter dynamically shapes chunks to preserve coherence while maximizing retrievability.
+
+Every dataset has a unique structure and rhythm. Legal texts, research articles, and travel diaries all contain different patterns — such as numbered clauses, dates, or section headers — that can serve as natural breakpoints. Therefore, the chunking process should not rely on a fixed size alone, but adapt to semantic density, context boundaries, and narrative continuity. For instance, a dense paragraph filled with interconnected concepts may require a smaller chunk size, while a descriptive passage can safely occupy a larger one.
+
+A well-optimized splitter can detect contextual breaks automatically using markers such as:
+	•	Dates and time references (e.g., \d{1,2}\sde\s[a-zA-Z]+ for Spanish date formats).
+	•	Titles or headings (lines in uppercase or followed by colons).
+	•	Paragraph indentation or bullet markers (•, -, or numbered lists).
+
+By incorporating regular expressions (regex) or lightweight natural language segmentation models, the splitter can dynamically identify the logical boundaries of meaning. These techniques help the system avoid cutting sentences mid-thought or splitting related items across different chunks — both of which can severely reduce recall.
+
+Another key parameter is overlap, which ensures continuity between chunks. Overlapping a small portion of text between consecutive segments allows the retriever to maintain contextual flow, preventing information loss at chunk boundaries. However, overlap must be carefully balanced: too little can break coherence, while too much increases storage and indexing time.
+
+Typical parameters for tuning chunking behavior include:
+	•	chunk_size: the maximum number of characters or tokens per chunk (e.g., 500–1,000).
+	•	chunk_overlap: the number of overlapping tokens between chunks (e.g., 100–200).
+	•	split_by: rule or regex pattern for natural boundaries (e.g., paragraph breaks, dates, section titles).
+	•	split_method: whether to use a semantic splitter (based on sentence embeddings) or a structural splitter (based on rules and regex).
+
+The goal of these refinements is to improve both precision and recall in retrieval. Better chunking increases the probability that relevant information is found within the top-k results while reducing redundancy. It also preserves traceability, ensuring each chunk remains linked to its original metadata — a crucial factor for auditing and explainability in production systems.
+
+In summary, adaptive and context-aware chunking transforms a basic RAG into a robust information retrieval framework. Through careful parameter tuning, semantic segmentation, and regex-driven boundary detection, the splitter evolves from a simple preprocessing utility into a strategic component that directly shapes retrieval quality, reduces false negatives, and elevates the overall performance of the system.
 
 ⸻
 
 ## XIV. Optimization
-	•	Performance presets (fast vs accurate).
-	•	Parameter tuning for recall and latency.
-	•	Context condensation for long contexts.
-	•	Re-ranking options and when to disable them.
-	•	Efficiency improvements and caching strategies.
+
+Once the RAG pipeline is fully functional and evaluated, the next crucial step is optimization — the process of refining its speed, accuracy, and efficiency. Optimization is not a one-time operation but a continuous balancing act between recall, precision, and latency. A well-optimized RAG should respond quickly, retrieve relevant chunks, and remain stable under varying workloads.
+
+The optimization process typically begins by defining performance presets, which help adapt the system to different use cases without constantly modifying parameters. A common approach is to introduce two operational modes:
+	•	Fast Mode: Designed for speed, using smaller k values (e.g., 8), lower prefetch counts (e.g., 16–24), and no re-ranking. This mode is ideal for interactive applications like chatbots, where responsiveness is key.
+	•	Accurate Mode: Prioritizes precision, with larger k (e.g., 12–16), wider prefetching (e.g., 36–48), and optional re-ranking. This mode suits auditing, research, or analytical tasks where every retrieved detail matters.
+
+Optimization also includes parameter tuning, which directly affects retrieval behavior. Parameters such as k, prefetch, and threshold control the trade-off between the breadth of results and their relevance.
+	•	Increasing k or prefetch improves recall but raises computational cost.
+	•	Lowering the threshold allows more candidates but may introduce irrelevant context.
+	•	A balanced configuration ensures the RAG maintains high accuracy while avoiding slowdowns.
+
+Another powerful technique is context condensation, particularly when dealing with lengthy retrieved passages. Instead of passing entire paragraphs to the LLM, the system can summarize each chunk into one or two key sentences using extractive summarization. This approach preserves meaning while reducing the number of tokens processed — improving both inference speed and model focus.
+
+Re-ranking is another optimization dimension. Using cross-encoders or similarity scoring (like cosine or dot-product), re-ranking can reorder retrieved chunks by semantic importance. However, it is computationally expensive. For this reason, re-ranking should be optional, enabled only when precision is critical, and disabled in real-time applications to reduce latency.
+
+To improve efficiency further, developers can implement caching mechanisms. By storing previously computed embeddings or query results, the system avoids recomputation for identical or similar inputs. Persistent caching — whether in-memory (Redis, SQLite) or on disk — can dramatically reduce latency during repeated queries. Additionally, keeping the LLM service (such as Ollama or OpenAI API) warm-loaded ensures faster response times by avoiding cold starts.
+
+Finally, optimization extends beyond retrieval. It also includes parallelization and batching, allowing multiple queries or embeddings to be processed simultaneously. In large-scale deployments, asynchronous requests and distributed vector databases (like Weaviate or Milvus) can scale performance linearly with hardware.
+
+In essence, optimization transforms a correct RAG into an efficient, production-ready system. By carefully tuning parameters, condensing context, managing caching, and dynamically choosing between fast and accurate modes, developers achieve the perfect equilibrium between speed and reliability — ensuring the model remains responsive, factual, and efficient under real-world conditions.
 
 ⸻
 
-XV. Deployment (Streamlit Interface)
+XV. Deployment (UI Interface)
+
 	•	Interactive front-end for testing and demos.
 	•	Key UI elements: question box, response display, sources, history.
 	•	Session state and history export (JSON).
