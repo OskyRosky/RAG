@@ -1,4 +1,4 @@
-# Everything about RAG
+# Everything about Retrival Augmented Generator - RAG.
 
 
 ---------------------------------------------
@@ -58,7 +58,10 @@ For further discussions, contributions, or improvements, feel free to:
 
 ---------------------------------------------
 
-I. Introduction: What is Retrieval-Augmented Generation (RAG)
+# 1. Let's talk about RAG.
+
+## I. Introduction: What is Retrieval-Augmented Generation (RAG)
+
 	•	Definition and conceptual overview.
 	•	Motivation: why RAG improves LLM factuality.
 	•	Differences between standard LLMs and RAG systems.
@@ -66,7 +69,7 @@ I. Introduction: What is Retrieval-Augmented Generation (RAG)
 
 ⸻
 
-II. Is RAG a Stochastic Model?
+## II. Is RAG a Stochastic Model?
 	•	Explanation of deterministic and stochastic components.
 	•	Retrieval phase as deterministic.
 	•	Generation phase as stochastic but controllable.
@@ -74,7 +77,8 @@ II. Is RAG a Stochastic Model?
 
 ⸻
 
-III. Core Components of the RAG Cycle
+## III. Core Components of the RAG Cycle
+
 	1.	Data ingestion.
 	2.	Document chunking (splitting).
 	3.	Embedding creation.
@@ -87,7 +91,7 @@ III. Core Components of the RAG Cycle
 
 ⸻
 
-IV. Setting Up the Working Environment
+##  IV. Setting Up the Working Environment
 	•	Required Python version and libraries.
 	•	Virtual environment creation.
 	•	Key dependencies overview (LangChain, ChromaDB, Sentence Transformers, Streamlit, Ollama).
@@ -95,7 +99,7 @@ IV. Setting Up the Working Environment
 
 ⸻
 
-V. Information Ingestion
+## V. Information Ingestion
 	•	Input formats and preprocessing (PDF, DOCX, JSON, TXT).
 	•	Cleaning and normalization procedures.
 	•	Metadata extraction and schema standardization.
@@ -103,7 +107,7 @@ V. Information Ingestion
 
 ⸻
 
-VI. Document Splitting (Chunking)
+## VI. Document Splitting (Chunking)
 	•	Purpose of chunking and its impact on recall and precision.
 	•	Strategies: fixed-size chunks, semantic chunking, date-based splitting.
 	•	Trade-offs between overlap and fragmentation.
@@ -111,7 +115,7 @@ VI. Document Splitting (Chunking)
 
 ⸻
 
-VII. Document Embedding
+## VII. Document Embedding
 	•	Concept of embeddings and semantic representation.
 	•	Model selection (e.g., MiniLM, MPNet, BGE-M3).
 	•	Normalization and encoding parameters.
@@ -119,7 +123,7 @@ VII. Document Embedding
 
 ⸻
 
-VIII. Vector Store
+## VIII. Vector Store
 	•	Role of the vector database in RAG.
 	•	ChromaDB architecture and persistence.
 	•	Adding, updating, and rebuilding indexes.
@@ -128,7 +132,7 @@ VIII. Vector Store
 
 ⸻
 
-IX. Handling User Queries
+## IX. Handling User Queries
 	•	Workflow from user input to semantic retrieval.
 	•	How queries are vectorized and compared with the index.
 	•	Parameters controlling retrieval: k, prefetch, threshold.
@@ -137,7 +141,7 @@ IX. Handling User Queries
 
 ⸻
 
-X. Large Language Model and Safe Prompting (Anti-Hallucination)
+## X. Large Language Model and Safe Prompting (Anti-Hallucination)
 	•	LLM selection and integration (Ollama, OpenAI, Mistral).
 	•	Prompt engineering to enforce factual constraints.
 	•	Grounding responses in retrieved evidence.
@@ -146,7 +150,7 @@ X. Large Language Model and Safe Prompting (Anti-Hallucination)
 
 ⸻
 
-XI. The RAG Chain: Retrieve → Read
+## XI. The RAG Chain: Retrieve → Read
 	•	Description of the end-to-end pipeline.
 	•	Data flow between retrieval and generation.
 	•	Context assembly logic and source citation.
@@ -154,7 +158,7 @@ XI. The RAG Chain: Retrieve → Read
 
 ⸻
 
-XII. Question Answering (QA) Evaluation
+## XII. Question Answering (QA) Evaluation
 	•	Automatic testing of system accuracy.
 	•	Use of fuzzy matching to handle language variability.
 	•	Metrics: true positives, false negatives, accuracy rate.
@@ -163,7 +167,7 @@ XII. Question Answering (QA) Evaluation
 
 ⸻
 
-XIII. Splitter Improvements
+## XIII. Splitter Improvements
 	•	Adaptive chunk sizing based on semantic density.
 	•	Automatic detection of contextual breaks (dates, titles, paragraphs).
 	•	Overlap tuning for continuity.
@@ -172,7 +176,7 @@ XIII. Splitter Improvements
 
 ⸻
 
-XIV. Optimization
+## XIV. Optimization
 	•	Performance presets (fast vs accurate).
 	•	Parameter tuning for recall and latency.
 	•	Context condensation for long contexts.
@@ -190,7 +194,7 @@ XV. Deployment (Streamlit Interface)
 
 ⸻
 
-XVI. Dockerization
+## XVI. Dockerization
 	•	Benefits of containerizing the RAG system.
 	•	Structure of the Dockerfile and .dockerignore.
 	•	Building and running the image locally.
@@ -199,7 +203,7 @@ XVI. Dockerization
 
 ⸻
 
-XVII. Monitoring and Logging
+## XVII. Monitoring and Logging
 	•	Recording of queries, latency, and retrieved sources.
 	•	Logging best practices for transparency and debugging.
 	•	Performance dashboards and metrics collection.
@@ -208,7 +212,7 @@ XVII. Monitoring and Logging
 
 ⸻
 
-XVIII. Future Extensions and Scalability
+## XVIII. Future Extensions and Scalability
 	•	Integration with FAISS, Weaviate, or Qdrant for larger scale.
 	•	Retrieval-augmented evaluation (RAGAS).
 	•	Continuous learning and dynamic updates.
