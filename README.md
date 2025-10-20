@@ -54,18 +54,27 @@ The repository follows a structured RAG pipeline workflow:
 5.  **Learning** 💡
 
 This repository serves as a practical guide for professionals interested in:
+
 	•	Understanding how retrieval enhances LLM factual grounding.
+	
 	•	Experimenting with embeddings, similarity search, and prompt engineering.
+	
 	•	Learning to optimize RAG performance through tuning and evaluation.
+	
 	•	Building production-ready AI systems that remain transparent and auditable.
 
 6.  **Improvement** 🔩
 
 Future improvements to the system include:
+
 	•	Integration with FAISS, Weaviate, or Qdrant for large-scale retrieval.
+	
 	•	Automated RAGAS evaluation for faithfulness and answer quality.
+	
 	•	Dynamic retraining pipelines for continuous document ingestion.
+	
 	•	Multi-agent reasoning to combine retrieval, summarization, and verification.
+	
 	•	Cloud-ready CI/CD deployment and model versioning.
 
 7.  **Running the Project** ⚙️
