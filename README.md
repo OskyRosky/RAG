@@ -121,6 +121,7 @@ Alternatively, you can execute the time series forecasting pipeline on Google Co
 8 .  **More** 🙌🏽
 
 For further discussions, contributions, or collaborations:
+
 	•	💬 Open an issue or pull request on GitHub.
 	•	🧠 Share feedback or new ideas to enhance RAG modularity and performance.
 	•	🧾 Cite this repository if you use it for research or educational purposes.
