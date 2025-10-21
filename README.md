@@ -286,12 +286,14 @@ Among the most popular open-source vector stores is ChromaDB, a lightweight, dev
 Beyond ChromaDB, other vector databases cater to different levels of scale and performance requirements. FAISS (Facebook AI Similarity Search) is a high-performance library optimized for GPU-based nearest-neighbor search, ideal for research-scale or enterprise-level datasets containing millions of vectors. Milvus provides distributed, fault-tolerant storage with hybrid indexing, supporting billions of entries with low latency. Weaviate and Qdrant expose RESTful APIs and hybrid retrieval capabilities—combining semantic and keyword search—making them popular choices for production-ready AI search systems. Pinecone, a managed cloud service, removes infrastructure overhead by offering autoscaling and monitoring out of the box, albeit as a proprietary option.
 
 Retrieval within a vector store typically uses one of two methods:
+
 	1.	Exact nearest-neighbor search, which computes distances exhaustively across all vectors. This guarantees accuracy but scales poorly for large datasets.
 	2.	Approximate nearest-neighbor (ANN) search, which leverages algorithms like HNSW (Hierarchical Navigable Small World graphs), IVF (Inverted File Index), or ScaNN to return near-identical results in a fraction of the time. ANN indexing dramatically improves query performance for real-time applications, especially when combined with caching or tiered memory strategies.
 
 Efficient vector indexing is as much an art as it is an engineering choice. Index rebuilds should be performed after large ingestion events to ensure optimal retrieval performance. Normalization and deduplication prevent redundant storage and maintain embedding consistency. Chunk metadata should always include identifiers for traceability—knowing which source document produced a retrieved passage is crucial for explainability and auditing.
 
 Best practices for maintaining an efficient vector store include:
+
 	•	Batch updates instead of single-record inserts to reduce I/O overhead.
 	•	Vector normalization at insertion time to ensure consistent similarity scaling.
 	•	Hybrid retrieval combining semantic and keyword search for robustness.
@@ -309,6 +311,7 @@ Handling user queries is where the Retrieval-Augmented Generation (RAG) system c
 When a user submits a question — for example, “Where did I have lunch on May 16, 2024, in Brazil?” — the system doesn’t rely on literal keyword matching. Instead, it embeds the entire query into a numerical representation using the same embedding model that was used for document encoding. This ensures that both the query and the stored chunks live in the same semantic space, where proximity reflects conceptual similarity. The resulting query vector is then compared to all stored vectors using a similarity metric such as cosine or dot product. The database returns the k nearest neighbors — the most semantically relevant chunks.
 
 Three parameters govern how this retrieval behaves:
+
 	•	k (top-k) controls the number of results returned from the vector store. A low k yields more precise but potentially incomplete retrieval, while a higher k expands recall but introduces noise. In practice, k is tuned experimentally to balance performance and accuracy (e.g., 8–16 for short documents, 20–40 for large corpora).
 	•	prefetch determines how many additional candidates are initially retrieved before applying filtering or reranking. Prefetching allows the system to cast a wider net, useful when queries are ambiguous or embeddings have slight drift.
 	•	threshold defines a minimum similarity score required for a chunk to be considered relevant. This acts as a semantic confidence filter — too high, and valid chunks may be excluded; too low, and irrelevant ones clutter the context window.
