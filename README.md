@@ -464,9 +464,10 @@ The optimization process typically begins by defining performance presets, which
 	•	Accurate Mode: Prioritizes precision, with larger k (e.g., 12–16), wider prefetching (e.g., 36–48), and optional re-ranking. This mode suits auditing, research, or analytical tasks where every retrieved detail matters.
 
 Optimization also includes parameter tuning, which directly affects retrieval behavior. Parameters such as k, prefetch, and threshold control the trade-off between the breadth of results and their relevance.
-	•	Increasing k or prefetch improves recall but raises computational cost.
-	•	Lowering the threshold allows more candidates but may introduce irrelevant context.
-	•	A balanced configuration ensures the RAG maintains high accuracy while avoiding slowdowns.
+
+•	Increasing k or prefetch improves recall but raises computational cost.
+•	Lowering the threshold allows more candidates but may introduce irrelevant context.
+•	A balanced configuration ensures the RAG maintains high accuracy while avoiding slowdowns.
 
 Another powerful technique is context condensation, particularly when dealing with lengthy retrieved passages. Instead of passing entire paragraphs to the LLM, the system can summarize each chunk into one or two key sentences using extractive summarization. This approach preserves meaning while reducing the number of tokens processed — improving both inference speed and model focus.
 
