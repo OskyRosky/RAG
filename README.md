@@ -15,13 +15,13 @@ The system was built to demonstrate how structured information pipelines can tra
 
 The project relies on a modern, modular AI ecosystem:
 
-	•	Python 3.12 as the main programming environment.
-	•	LangChain for orchestration of retrieval and LLM components.
-	•	ChromaDB as the vector store for semantic indexing.
-	•	Sentence Transformers for multilingual embeddings.
-	•	Ollama for local LLM inference (e.g., Llama 3).
-	•	Streamlit for the interactive front-end UI.
-	•	Docker for reproducible and portable deployments.
+•	Python 3.12 as the main programming environment.
+•	LangChain for orchestration of retrieval and LLM components.
+•	ChromaDB as the vector store for semantic indexing.
+•	Sentence Transformers for multilingual embeddings.
+•	Ollama for local LLM inference (e.g., Llama 3).
+•	Streamlit for the interactive front-end UI.
+•	Docker for reproducible and portable deployments.
 
 
 3.  **Features** 🤳🏽
