@@ -83,27 +83,36 @@ To launch the RAG demo on your system:
 
 i. Clone the repository
 
+```text
 git clone https://github.com/yourusername/RAG-System.git
 cd RAG-Streamlit
-
+```
 
 ii. Install dependencies
 
+```text
 python -m venv .venv
 source .venv/bin/activate  # (Mac/Linux)
+```
 
 iii. Run the Jupyter notebooks or scripts in the /notebooks or /src directory
 
+```text
 pip install -r requirements.txt
+```
 
 iv. Build or rebuild the vector index (if needed):
 
+```text
 docker build -t rag-streamlit:latest .
 docker run -p 8501:8501 rag-streamlit:latest
+```
 
 v. Run the Streamlit interface:
 
+```text
 streamlit run app/app.py
+```
 
 vi. (Optional) Run the containerized version:
 
