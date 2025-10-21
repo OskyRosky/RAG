@@ -260,11 +260,16 @@ An embedding model converts text into a vector of fixed dimensionality, often be
 Before embedding, normalization ensures consistency across the corpus. You lowercase text, normalize Unicode characters, and collapse spacing. For multilingual or mixed-script data, you unify tokenization and remove control characters. Models often accept inputs up to a few hundred tokens — 512 for BERT-based models, 1,024 for MPNet — so overly long chunks are truncated or split further. During embedding, batch size and precision (float32 vs. float16) trade off between speed and fidelity: smaller precision accelerates inference with minor accuracy loss, while larger batches improve GPU throughput.
 
 Once embedded, vectors should be normalized to unit length using L2 normalization. This step is essential when using cosine similarity or dot product as the distance metric; otherwise, magnitude differences dominate the score. The similarity measure determines how retrieval ranks documents. Common choices include:
-	•	Cosine similarity, the most widely used metric, comparing the angle between vectors and producing scores between –1 and 1.
-	•	Dot product, equivalent to cosine similarity when vectors are normalized, often faster in libraries like FAISS and Chroma.
-	•	Euclidean distance, measuring absolute distance in high-dimensional space, occasionally used for clustering but less for semantic search.
-	•	Manhattan distance (L1) and Chebyshev distance, alternative metrics for sparse embeddings.
-	•	Approximate Nearest Neighbor (ANN) techniques such as HNSW, IVF Flat, and ScaNN, which scale similarity search efficiently to millions of vectors.
+
+•	Cosine similarity, the most widely used metric, comparing the angle between vectors and producing scores between –1 and 1.
+
+•	Dot product, equivalent to cosine similarity when vectors are normalized, often faster in libraries like FAISS and Chroma.
+
+•	Euclidean distance, measuring absolute distance in high-dimensional space, occasionally used for clustering but less for semantic search.
+
+•	Manhattan distance (L1) and Chebyshev distance, alternative metrics for sparse embeddings.
+
+•	Approximate Nearest Neighbor (ANN) techniques such as HNSW, IVF Flat, and ScaNN, which scale similarity search efficiently to millions of vectors.
 
 Several libraries implement these methods efficiently. ChromaDB provides a lightweight Python-native solution with persistent storage and metadata filtering. FAISS (by Meta AI) offers GPU acceleration and flexible ANN indexing structures for massive datasets. Milvus, Weaviate, and Qdrant provide distributed vector search capabilities with API-level integration for production environments. For prototyping, LangChain and LlamaIndex abstract these backends, allowing quick experimentation with different embedding models and stores without rewriting code.
 
